@@ -151,11 +151,12 @@ export default {
       });
     },
     async GoogleAPI() {
-      const googleClientId =
-        '148755362421-us8l17s3ukf88mj23kbs5vj2i8lgu8nk.apps.googleusercontent.com';
-      const redirectUri = import.meta.env.VITE_Redirect_BASE; // 請依照你的 Vue 環境調整
+      const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+      const redirectUri = import.meta.env.VITE_Redirect_BASE;
+      const authUrl =
+        import.meta.env.VITE_GOOGLE_AUTH_URL || 'https://accounts.google.com/o/oauth2/v2/auth';
 
-      const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${googleClientId}&redirect_uri=${redirectUri}&response_type=code&scope=openid%20email%20profile`;
+      const url = `${authUrl}?client_id=${encodeURIComponent(googleClientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=openid%20email%20profile`;
       window.location.href = url;
     },
   },
