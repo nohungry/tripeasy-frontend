@@ -15,6 +15,7 @@ const requireAuth = async (to, from, next) => {
     userStore.isLoggedIn = true; // 更新 store 狀態
     next();
   } else {
+    userStore.logout(); // token 無效：清掉登入狀態
     next('/admin/login');
   }
 };
@@ -68,13 +69,6 @@ const router = createRouter({
           meta: { title: '產品細項(USA假資料)' }
         },
 
-        //搜索頁面
-
-        {
-          path: 'search',
-          name: 'search',
-          component: () => import('../views/front/searchPage.vue'),
-        },
         //購物車頁面
         {
           path: '/cart',
@@ -192,6 +186,12 @@ const router = createRouter({
       // this generates a separate chunk (About.[hash].js) for this route
       // which is lazy-loaded when the route is visited.
       component: () => import('../views/AboutView.vue'),
+    },
+    //搜索頁面（頂層：searchPage 自帶 Header，不可放在 HomeLayout 底下）
+    {
+      path: '/search',
+      name: 'search',
+      component: () => import('../views/front/searchPage.vue'),
     },
     //找不到頁面（放最後）
     {
