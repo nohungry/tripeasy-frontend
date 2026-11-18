@@ -1,5 +1,6 @@
 //import './assets/main.css'  //vite預設的css內容
 
+import './oauthRedirect';
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import axios from 'axios';

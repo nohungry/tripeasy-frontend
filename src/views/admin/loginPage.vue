@@ -103,14 +103,13 @@ export default {
       this.rememberMe = true;
     }
 
-    // 處理 Google 登入回傳 code
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get('code');
+    // 處理 Google 登入回傳 code（main.js 已把 ?code= 轉進 hash 路由）
+    const code = this.$route.query.code;
 
     if (code) {
       api.post_user_LoginGoogle(code);
       // 清除網址上的 code 參數
-      window.history.replaceState({}, document.title, window.location.pathname);
+      this.$router.replace({ path: this.$route.path });
     }
   },
   watch: {
