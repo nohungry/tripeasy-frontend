@@ -67,7 +67,6 @@
             <div class="icon-circle google" @click="GoogleAPI">
               <i class="fa-brands fa-google"></i>
             </div>
-            <div class="icon-circle fb"><i class="fa-brands fa-facebook-f"></i></div>
           </div>
         </div>
       </div>

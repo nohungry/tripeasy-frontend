@@ -1,6 +1,7 @@
 import { userStore } from '@/stores/userStore.js';
 import Swal from 'sweetalert2';
 import axios from 'axios';
+import router from '@/router';
 
 const baseUrl = import.meta.env.VITE_API_BASE;
 const version = 'v1';
@@ -32,7 +33,8 @@ export function post_user_SignUp(
       });
 
       setTimeout(() => {
-        window.location.href = '/admin/login';
+        Swal.close();
+        router.push('/admin/login');
       }, 3000);
     })
     .catch((error) => {
@@ -82,7 +84,8 @@ export function post_user_LoginEmail(signUpEmail_txt, signUpPwd_txt, onComplete)
       });
 
       setTimeout(() => {
-        window.location.href = '/admin/userprofile';
+        Swal.close();
+        router.push('/admin/userprofile');
       }, 3000);
     })
     .catch((error) => {
@@ -132,7 +135,8 @@ export function post_user_LoginGoogle(code) {
       });
 
       setTimeout(() => {
-        window.location.href = '/admin/userprofile';
+        Swal.close();
+        router.push('/admin/userprofile');
       }, 3000);
     })
     .catch((error) => {
@@ -204,7 +208,8 @@ export function post_user_resetPW(
       });
 
       setTimeout(() => {
-        window.location.href = '/admin/login';
+        Swal.close();
+        router.push('/admin/login');
       }, 3000);
     })
     .catch((error) => {
@@ -303,7 +308,7 @@ export async function patch_user_Profile(payload) {
       text: error.response.data.message,
       scrollbarPadding: false,
     });
-    throw err; // ✅ 讓呼叫端也可以 catch 到錯誤
+    throw error; // ✅ 讓呼叫端也可以 catch 到錯誤
   }
 }
 

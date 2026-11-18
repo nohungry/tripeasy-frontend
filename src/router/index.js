@@ -125,7 +125,7 @@ const router = createRouter({
           path: 'userprofile',
           name: 'userprofile',
           component: () => import('../views/admin/userprofilePage.vue'),
-          //beforeEnter: requireAuth,//用戶登入才可以進入此頁面
+          beforeEnter: requireAuth, //用戶登入才可以進入此頁面
         },
         //會員資料
         {
@@ -138,12 +138,14 @@ const router = createRouter({
           path: 'collect',
           name: 'collect',
           component: () => import('../views/admin/collectPage.vue'),
+          beforeEnter: requireAuth,
         },
         //個人旅遊訂單
         {
           path: 'personalOrder',
           name: 'personalOrder',
           component: () => import('../views/admin/personalOrder.vue'),
+          beforeEnter: requireAuth,
         },
         //管理者中心(管理者功能)
         {
@@ -191,12 +193,19 @@ const router = createRouter({
       // which is lazy-loaded when the route is visited.
       component: () => import('../views/AboutView.vue'),
     },
-    //搜索頁面
+    //找不到頁面（放最後）
     {
-       path: '/search',
-       name: 'search',
-       component: () => import('../views/front/searchPage.vue'),
-     },
+      path: '/:pathMatch(.*)*',
+      component: HomeLayout,
+      children: [
+        {
+          path: '',
+          name: 'not-found',
+          component: () => import('../views/NotFound.vue'),
+          meta: { title: '找不到頁面' },
+        },
+      ],
+    },
   ],
 });
 
