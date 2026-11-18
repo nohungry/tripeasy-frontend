@@ -10,7 +10,6 @@ import CartLayout from '../layouts/CartLayout.vue';
 
 const requireAuth = async (to, from, next) => {
   const res = await api.get_user_status();
-  console.log(res);
   if (res.isLoggedIn) {
     userStore.isLoggedIn = true; // 更新 store 狀態
     next();
@@ -211,7 +210,7 @@ const router = createRouter({
 });
 
 router.beforeEach(async (to, from, next) => {
-  const authPages = ['/admin/login', '/admin/register', '/admin/forgotpw', '/admin/resetpw'];
+  const authPages = ['/admin/login', '/admin/register'];
 
   if (to.meta.title) {
     document.title = to.meta.title;
