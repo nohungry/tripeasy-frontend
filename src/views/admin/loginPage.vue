@@ -103,7 +103,7 @@ export default {
       this.rememberMe = true;
     }
 
-    // 處理 Google 登入回傳 code（main.js 已把 ?code= 轉進 hash 路由）
+    // 處理 Google 登入回傳 code（oauthRedirect.js 已在 router 建立前把 ?code= 轉進 hash 路由）
     const code = this.$route.query.code;
 
     if (code) {

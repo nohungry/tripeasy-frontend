@@ -1,5 +1,6 @@
 //import './assets/main.css'  //vite預設的css內容
 
+// 必須是第一個 import，見 oauthRedirect.js
 import './oauthRedirect';
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
