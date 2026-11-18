@@ -9,6 +9,24 @@ const apiUrl = `${baseUrl}/api/${version}/auth/userinfo`;
 
 const apiUrl_userprofile = `${baseUrl}/api/${version}/user/userinfo`;
 
+// 401 統一處理：只限會員 API（apiUrl_userprofile 底下與 /resetprofilepw）。
+// 刻意不包含 /login/status、/login/email、/login/google：router.beforeEach 在
+// login / register / forgotpw / resetpw 頁會帶（可能已過期的）token 打 /login/status，
+// 若一律處理，重設密碼信的連結會被導回登入頁。
+const memberApiPrefixes = [apiUrl_userprofile, `${apiUrl}/resetprofilepw`];
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const url = error.config?.url || '';
+    if (error.response?.status === 401 && memberApiPrefixes.some((p) => url.startsWith(p))) {
+      userStore.logout();
+      Swal.close();
+      router.replace('/admin/login');
+    }
+    return Promise.reject(error);
+  }
+);
+
 // [POST] 編號 01 : 使用者註冊、個人偏好設定
 export function post_user_SignUp(
   signUpName_txt,
@@ -264,6 +282,8 @@ export async function get_user_status() {
     return {
       isLoggedIn: false,
       user: null,
+      // 只有後端明確回 401 才代表 token 無效；網路錯誤等其他錯誤不應清掉登入資料
+      unauthorized: err.response?.status === 401,
     };
   }
 }
@@ -302,13 +322,40 @@ export async function patch_user_Profile(payload) {
     userStore.status(res.data);
     return res.data;
   } catch (error) {
+    const data = error.response?.data;
     Swal.fire({
       icon: 'error',
-      title: error.response.data.status,
-      text: error.response.data.message,
+      title: data?.status || '網路錯誤',
+      text: data?.message || '無法連線到伺服器，請檢查網路後再試一次。',
       scrollbarPadding: false,
     });
     throw error; // ✅ 讓呼叫端也可以 catch 到錯誤
+  }
+}
+
+// [PATCH] 編號 12 : 使用者照片個人上傳
+export async function patch_user_Avatar(file) {
+  const formData = new FormData();
+  formData.append('image', file);
+  try {
+    const res = await axios.patch(`${apiUrl_userprofile}/avatar`, formData, {
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem('authToken')}`,
+      },
+    });
+    const avatarUrl = res.data.data.avatar_url;
+    localStorage.setItem('userPicture', avatarUrl);
+    userStore.userPicture = avatarUrl;
+    return res.data.data;
+  } catch (error) {
+    const data = error.response?.data;
+    Swal.fire({
+      icon: 'error',
+      title: data?.status || '網路錯誤',
+      text: data?.message || '無法連線到伺服器，請檢查網路後再試一次。',
+      scrollbarPadding: false,
+    });
+    throw error;
   }
 }
 
@@ -334,7 +381,12 @@ export function post_user_resetProfilePW(Pwd_txt, NewPwd_txt, NewaginPwd_txt, on
         title: res.data.status,
         text: res.data.message,
         scrollbarPadding: false,
+        timer: 1500,
+        showConfirmButton: false,
       });
+      // 改密碼後舊 token 已失效：清登入資料並導回登入頁
+      userStore.logout();
+      router.push('/admin/login');
     })
     .catch((error) => {
       Swal.fire({

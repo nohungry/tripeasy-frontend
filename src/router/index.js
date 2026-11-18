@@ -15,7 +15,8 @@ const requireAuth = async (to, from, next) => {
     userStore.isLoggedIn = true; // 更新 store 狀態
     next();
   } else {
-    userStore.logout(); // token 無效：清掉登入狀態
+    // 只有後端回 401（token 無效）才清登入狀態；網路錯誤等其他錯誤只導向登入頁
+    if (res.unauthorized) userStore.logout();
     next('/admin/login');
   }
 };

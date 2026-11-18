@@ -10,7 +10,21 @@
           <!-- 側邊欄 -->
           <div class="sidebar col-md-3 col-lg-2">
             <div class="sidebar-content">
-              <img class="headimg" :src="userStore.userPicture" alt="頭像" />
+              <img
+                class="headimg"
+                :src="userStore.userPicture"
+                alt="頭像"
+                title="點擊更換頭像"
+                @click="$refs.avatarInput.click()"
+              />
+              <input
+                ref="avatarInput"
+                type="file"
+                accept="image/*"
+                aria-label="上傳頭像"
+                class="d-none"
+                @change="uploadAvatar"
+              />
               <div class="name">{{ user.name }}</div>
               <div
                 class="sidebaritem"
@@ -27,6 +41,9 @@
           <!-- 主要內容 -->
           <div class="col-md-9 col-lg-10">
             <div class="title"><i class="bi bi-person-circle me-2"></i>會員中心</div>
+
+            <!-- 尚未開放的分頁 -->
+            <div v-if="currentTab !== '會員資訊'" class="coming-soon">即將開放</div>
 
             <!-- 會員資訊表單 -->
             <form v-if="currentTab === '會員資訊'" id="userinfo" @submit.prevent>
@@ -249,6 +266,18 @@ export default {
       };
     },
 
+    async uploadAvatar(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      try {
+        await api.patch_user_Avatar(file);
+      } catch (error) {
+        // 錯誤提示已在 api 內顯示
+      } finally {
+        event.target.value = ''; // 允許重選同一張
+      }
+    },
+
     async updateUserInfo() {
       const payload = {
         name: this.user.name,
@@ -438,6 +467,16 @@ body {
 select option:disabled {
   color: #d4d4d4 !important;
   background-color: #f8f9fa !important;
+}
+
+.coming-soon {
+  background-color: #fff;
+  border-radius: 0.5rem;
+  padding: 3rem 2rem;
+  margin-bottom: 2rem;
+  text-align: center;
+  color: #6c757d;
+  box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
 }
 
 /* 編輯圖標 */
