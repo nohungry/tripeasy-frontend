@@ -130,6 +130,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue';
 import { userStore } from '@/stores/userStore.js';
+import router from '@/router';
 
 const searchText = ref('');
 const language = ref('zh');
@@ -145,7 +146,7 @@ function logout() {
   userStore.logout();
   dropdownOpen.value = false;
 
-  window.location.href = '/';
+  router.push('/');
 }
 
 function handleResize() {

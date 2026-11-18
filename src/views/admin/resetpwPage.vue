@@ -101,8 +101,7 @@ export default {
     };
   },
   mounted() {
-    const params = new URLSearchParams(window.location.search);
-    this.token = params.get('token');
+    this.token = this.$route.query.token;
     api.get_user_captcha();
 
     if (!this.token) {
