@@ -60,6 +60,34 @@ axios.interceptors.response.use(
   }
 );
 
+// 公開讀取：有 token 才帶 Authorization（避免送出 Bearer null）。token 已過期時 interceptor 會
+// 登出並標 sessionExpired，這裡不帶 token 再試一次，讓訪客仍看得到公開頁。
+export async function withOptionalAuth(request) {
+  const token = localStorage.getItem('authToken');
+  try {
+    return await request(token ? { Authorization: `Bearer ${token}` } : {});
+  } catch (error) {
+    if (token && error?.sessionExpired) {
+      return await request({});
+    }
+    throw error;
+  }
+}
+
+// [GET] 商品詳情：400／404 回 null
+export async function get_tour_detail(tourId) {
+  try {
+    const res = await withOptionalAuth((headers) =>
+      axios.get(`${apiUrl_product}/${encodeURIComponent(tourId)}`, { headers, params: { lang: 'zh-TW' } })
+    );
+    return res.data.data;
+  } catch (error) {
+    const status = error.response?.status;
+    if (status === 400 || status === 404) return null;
+    throw error;
+  }
+}
+
 // [POST] 編號 01 : 使用者註冊、個人偏好設定
 export function post_user_SignUp(
   signUpName_txt,

@@ -36,21 +36,12 @@ const router = createRouter({
           component: () => import('../views/HomeView.vue'),
         },
 
-        //產品細項頁面
-
+        //行程詳情頁
         {
-          path: 'tour',
+          path: 'tour/:tour_id',
           name: 'tour',
           component: () => import('../views/front/tourPage.vue'),
-          meta: { title: '產品細項' }
-        },
-
-        //產品細項頁面(假資料)
-        {
-          path: 'tourfake',
-          name: 'tourfake',
-          component: () => import('../views/front/tourPageFake.vue'),
-          meta: { title: '產品細項(假資料)' }
+          meta: { title: '行程詳情' }
         },
 
         //產品細項頁面(假資料)
@@ -59,14 +50,6 @@ const router = createRouter({
           name: 'pay',
           component: () => import('../views/front/pay.vue'),
           meta: { title: '產品細項(假資料)' }
-        },
-
-        //產品細項頁面 (大峽谷假資料)
-        {
-          path: 'tourfakeUSA',
-          name: 'tourfakeUSA',
-          component: () => import('../views/front/tourFakeUSA.vue'),
-          meta: { title: '產品細項(USA假資料)' }
         },
 
         //購物車頁面
