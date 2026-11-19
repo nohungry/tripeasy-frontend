@@ -165,7 +165,7 @@
   <div class="container my-5">
       <div class="row gy-4">
         <div v-if="loading" class="col-12 text-center text-muted">載入中…</div>
-        <div v-else-if="loadFailed" class="col-12 text-center text-danger">載入失敗，請稍後再試</div>
+        <div v-else-if="loadFailed" class="col-12 text-center text-danger" data-testid="load-error">{{ loadErrorMessage }}</div>
         <div v-else-if="items.length === 0" class="col-12 text-center text-muted">查無符合條件的行程</div>
         <div
           class="col-12"
@@ -266,6 +266,7 @@ const currentPage = ref(1);
 const items = ref([]);
 const loading = ref(false);
 const loadFailed = ref(false);
+const loadErrorMessage = ref('載入失敗，請稍後再試');
 const hasNext = computed(() => items.value.length === itemsPerPage.value);
 
 const tagClasses = ['bg-warning text-dark', 'bg-secondary text-white', 'bg-danger text-white'];
@@ -296,6 +297,7 @@ async function fetchPage(page) {
   const seq = ++requestSeq;
   loading.value = true;
   loadFailed.value = false;
+  loadErrorMessage.value = '載入失敗，請稍後再試';
   try {
     const rows = await get_tour_list(buildQuery(page));
     if (seq !== requestSeq) return;
@@ -305,6 +307,11 @@ async function fetchPage(page) {
     if (seq !== requestSeq) return;
     items.value = [];
     loadFailed.value = true;
+    // 400 是查詢條件不合法，後端的 message 會說明原因，直接顯示；其他錯誤維持通用訊息
+    const serverMessage = error?.response?.data?.message;
+    if (error?.response?.status === 400 && typeof serverMessage === 'string' && serverMessage) {
+      loadErrorMessage.value = serverMessage;
+    }
   } finally {
     if (seq === requestSeq) loading.value = false;
   }

@@ -146,7 +146,7 @@
               <strong>{{ r.name }}</strong>
               <span v-if="r.level && r.level.name" class="badge bg-info ms-2">{{ r.level.name }}</span>
               <span class="ms-2">{{ r.rating }} 分</span>
-              <small class="text-muted ms-2">{{ dateText(r.create_date) }}</small>
+              <small class="text-muted ms-2">{{ createdText(r.create_date) }}</small>
             </div>
             <div class="illustrate">{{ r.content }}</div>
           </li>
@@ -191,7 +191,7 @@
           <li v-for="s in shares" :key="s.shares_id" class="mb-3 border-bottom pb-2" data-testid="share-item">
             <h5>{{ s.title }}</h5>
             <div class="illustrate">{{ s.content }}</div>
-            <small class="text-muted">{{ s.name }}　{{ dateText(s.create_date) }}</small>
+            <small class="text-muted">{{ s.name }}　{{ createdText(s.create_date) }}</small>
             <div v-if="safeUrl(s.url)">
               <a :href="safeUrl(s.url)" target="_blank" rel="noopener noreferrer">查看分享連結</a>
             </div>
@@ -224,7 +224,7 @@
           </div>
           <div class="mb-2">
             <label for="share-url" class="form-label">分享連結（選填）</label>
-            <input id="share-url" v-model="shareForm.url" type="text" class="form-control" />
+            <input id="share-url" v-model="shareForm.url" type="text" class="form-control" autocapitalize="off" autocorrect="off" spellcheck="false" />
           </div>
           <button type="submit" class="btn btn-primary" :disabled="submitting">分享玩法</button>
         </form>
@@ -401,6 +401,12 @@ export default {
     },
     dateText(d) {
       return d ? String(d).slice(0, 10) : '自由選擇';
+    },
+    // 評論／玩法的建立時間是 timestamptz：以 Asia/Taipei 換算成 YYYY-MM-DD（避免 00:00–08:00 顯示前一天）
+    createdText(d) {
+      const date = d ? new Date(d) : null;
+      if (!date || Number.isNaN(date.getTime())) return '';
+      return date.toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
     },
     // 只允許 http／https，其餘（javascript: 等）一律不當連結
     safeUrl(u) {
