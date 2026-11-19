@@ -1,6 +1,10 @@
 <template>
   <div class="wrap">
-    <div v-if="loaded && !tour" class="container my-5 text-center">
+    <div v-if="error" class="container my-5 text-center">
+      <h2 class="fw-bold">載入失敗，請稍後再試</h2>
+    </div>
+
+    <div v-else-if="loaded && !tour" class="container my-5 text-center">
       <h2 class="fw-bold">查無此行程</h2>
       <router-link to="/search" class="btn btn-outline-primary mt-3">回搜尋頁</router-link>
     </div>
@@ -141,7 +145,7 @@ import { get_tour_detail } from '@/utils/api.js';
 export default {
   name: 'tourPage',
   data() {
-    return { tour: null, loaded: false };
+    return { tour: null, loaded: false, error: false };
   },
   computed: {
     spots() {
@@ -176,6 +180,7 @@ export default {
         this.tour = await get_tour_detail(this.$route.params.tour_id);
       } catch (err) {
         this.tour = null;
+        this.error = true;
       } finally {
         this.loaded = true;
       }
