@@ -88,6 +88,17 @@ export async function get_tour_detail(tourId) {
   }
 }
 
+// [GET] 首頁購物專區：type（tourgroup／backpacker）、item、page、limit
+export async function get_home_products({ type, item, page, limit }) {
+  const res = await withOptionalAuth((headers) =>
+    axios.get(`${apiUrl_home}/products`, {
+      headers,
+      params: { type, item, page, limit, lang: 'zh-TW' },
+    })
+  );
+  return res.data.data ?? [];
+}
+
 // [POST] 編號 01 : 使用者註冊、個人偏好設定
 export function post_user_SignUp(
   signUpName_txt,

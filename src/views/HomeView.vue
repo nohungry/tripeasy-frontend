@@ -1,11 +1,6 @@
 <template>
   <!-- <router-view /> -->
   <div class="wrap">
-    <!-- 滑動後才出現的 nav -->
-    <div class="nav" :class="{ show: isSticky }">
-      <NavComponent />
-    </div>
-
     <div class="content">
       <div class="container">
         <!-- header 區塊 -->
@@ -94,40 +89,70 @@
                     <h2>購物專區</h2>
                   </div>
 
-                  <ul class="type_group">
-                    <li><a class="active" href="#">旅行團</a></li>
-                    <li><a href="#">背包客</a></li>
+                  <ul class="type_group" role="tablist" aria-label="商品分類">
+                    <li>
+                      <button
+                        type="button"
+                        role="tab"
+                        :class="{ active: productType === 'tourgroup' }"
+                        :aria-selected="productType === 'tourgroup' ? 'true' : 'false'"
+                        @click="selectType('tourgroup')"
+                      >
+                        旅行團
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        type="button"
+                        role="tab"
+                        :class="{ active: productType === 'backpacker' }"
+                        :aria-selected="productType === 'backpacker' ? 'true' : 'false'"
+                        @click="selectType('backpacker')"
+                      >
+                        背包客
+                      </button>
+                    </li>
                   </ul>
                 </div>
 
-                <ul class="item_group">
-                  <li><a class="active" href="#">熱門專區</a></li>
-                  <li><a href="#">促銷專區</a></li>
-                  <li><a href="#">多人收藏</a></li>
+                <ul class="item_group" role="tablist" aria-label="子分類">
+                  <li v-for="[value, label] in itemTabs" :key="value">
+                    <button
+                      type="button"
+                      role="tab"
+                      :class="{ active: productItem === value }"
+                      :aria-selected="productItem === value ? 'true' : 'false'"
+                      @click="selectItem(value)"
+                    >
+                      {{ label }}
+                    </button>
+                  </li>
                 </ul>
 
                 <ul class="product_item">
                   <li
                     class="i_list"
                     v-for="item in productList"
-                    :key="item.id"
-                    @mouseover="hoveredMainImage = item.mainImage"
+                    :key="item['旅遊編號']"
+                    data-testid="home-product-card"
+                    @mouseover="hoveredMainImage = item['旅遊代表圖 Url']"
+                    @click="openTour(item['旅遊編號'])"
                   >
                     <div class="i_container">
                       <div class="product_left">
                         <ul>
-                          <li v-for="(tag, tIdx) in item.tags" :key="tIdx">
+                          <li v-for="(tag, tIdx) in item['偏好分類']" :key="tIdx">
                             <span>{{ tag }}</span>
                           </li>
                         </ul>
-                        <h3>{{ item.title }}</h3>
+                        <h3>{{ item['旅遊名稱'] }}</h3>
                       </div>
 
                       <div class="product_right">
                         <div class="right_info">
-                          <p>出發日 : {{ item.departure || '自由選擇' }}</p>
+                          <p>出發日 : {{ departureText(item) }}</p>
                           <p>
-                            <span>NT$</span><span>{{ item.price }}</span>
+                            <span>NT$</span><span>{{ priceText(item) }}</span>
                           </p>
                         </div>
 
@@ -140,17 +165,33 @@
                 </ul>
 
                 <ul class="product_page">
-                  <li><img src="@/assets/img/icon/arrow-left.svg" alt="" /></li>
-                  <li><a href="">1</a></li>
-                  <li>/</li>
-                  <li><a href="">3</a></li>
-                  <li><img src="@/assets/img/icon/arrow-right.svg" alt="" /></li>
+                  <li>
+                    <button
+                      type="button"
+                      aria-label="上一頁"
+                      :disabled="productPage <= 1"
+                      @click="prevProductPage"
+                    >
+                      <img src="@/assets/img/icon/arrow-left.svg" alt="" />
+                    </button>
+                  </li>
+                  <li>{{ productPage }}</li>
+                  <li>
+                    <button
+                      type="button"
+                      aria-label="下一頁"
+                      :disabled="!hasNextProductPage"
+                      @click="nextProductPage"
+                    >
+                      <img src="@/assets/img/icon/arrow-right.svg" alt="" />
+                    </button>
+                  </li>
                 </ul>
               </div>
 
               <div class="content_right">
                 <div class="main_item">
-                  <img :src="hoveredMainImage" alt="產品主圖" />
+                  <img v-if="hoveredMainImage" :src="hoveredMainImage" alt="產品主圖" />
                   <div class="illustration">
                     <span
                       ><img class="l_first" src="@/assets/img/illustration/deco-img01.svg" alt=""
@@ -287,16 +328,13 @@
         </div>
       </div>
     </div>
-    <!-- Footer -->
-    <FooterComponent />
   </div>
 </template>
 
 <script>
 import { onMounted } from 'vue'
 
-import NavComponent from '@/components/HeaderComponent.vue';
-import FooterComponent from '@/components/FooterComponent.vue';
+import { get_home_products } from '@/utils/api.js';
 
 import taiwan_01 from '@/assets/img/home_page/viewpoint-img.svg';
 import taiwan_02 from '@/assets/img/home_page/viewpoint-img-7.svg';
@@ -306,10 +344,6 @@ import world_01 from '@/assets/img/home_page/viewpoint-img-3.svg';
 import world_02 from '@/assets/img/home_page/viewpoint-img-4.svg';
 import world_03 from '@/assets/img/home_page/viewpoint-img-5.svg';
 import world_04 from '@/assets/img/home_page/viewpoint-img-6.svg';
-
-import productImg1 from '@/assets/img/product/Shopping-img.svg';
-import productImg2 from '@/assets/img/product/Shopping-img-2.svg';
-import productImg3 from '@/assets/img/product/Shopping-img-1.svg';
 
 import tool_img01 from '@/assets/img/home_page/travel-img01.svg';
 import tool_img02 from '@/assets/img/home_page/travel-img02.svg';
@@ -331,12 +365,10 @@ import badge_05 from '@/assets/img/badge/badge05.svg';
 import starBold from '@/assets/img/icon/star-bold.svg';
 import starLine from '@/assets/img/icon/star-line.svg';
 
+const PRODUCT_LIMIT = 4;
+
 export default {
   name: 'HomePage',
-  components: {
-    NavComponent,
-    FooterComponent,
-  },
   data() {
     return {
       isSticky: false,
@@ -347,30 +379,12 @@ export default {
       currentIndex: 0,
       interval: null,
       autoMode: true,
-      productList: [
-        {
-          id: 1,
-          title: '高雄承億酒店',
-          tags: ['探索冒險', '文化體驗', '放鬆療癒'],
-          price: 7000,
-          mainImage: productImg1, // 對應右側大圖
-        },
-        {
-          id: 2,
-          title: '東京青年商旅',
-          tags: ['美食探索', '特殊主題', '親子主題'],
-          price: 5500,
-          mainImage: productImg2,
-        },
-        {
-          id: 3,
-          title: '洛杉磯豪華酒店',
-          tags: ['拍照打卡', '文化體驗', '都市感官'],
-          price: 12000,
-          mainImage: productImg3,
-        },
-      ],
-      hoveredMainImage: productImg1,
+      productType: 'tourgroup',
+      productItem: 'popular',
+      productPage: 1,
+      productList: [],
+      productRequestSeq: 0,
+      hoveredMainImage: '',
       selectedIndex: 0,
       toolIndex: 0, // 輪播圖片 index
       autoPlayTimer: null,
@@ -496,12 +510,76 @@ export default {
     };
   },
   computed: {
+    itemTabs() {
+      return this.productType === 'tourgroup'
+        ? [
+            ['popular', '熱門專區'],
+            ['promotion', '促銷專區'],
+            ['most_favorited', '多人收藏'],
+          ]
+        : [
+            ['hotel', '住宿'],
+            ['food', '美食'],
+            ['spot', '景點'],
+          ];
+    },
+    hasNextProductPage() {
+      return this.productList.length === PRODUCT_LIMIT;
+    },
     visibleReviews() {
       return this.reviews.slice(this.reviewIndex, this.reviewIndex + this.visibleCount);
     },
   },
 
   methods: {
+    async loadProducts() {
+      const seq = ++this.productRequestSeq;
+      let list = [];
+      try {
+        list = await get_home_products({
+          type: this.productType,
+          item: this.productItem,
+          page: this.productPage,
+          limit: PRODUCT_LIMIT,
+        });
+      } catch (error) {
+        list = [];
+      }
+      if (seq !== this.productRequestSeq) return; // 已有較新的請求，丟棄過期回應
+      this.productList = list;
+      this.hoveredMainImage = list.length ? list[0]['旅遊代表圖 Url'] : '';
+    },
+    selectType(type) {
+      this.productType = type;
+      this.productItem = this.itemTabs[0][0];
+      this.productPage = 1;
+      this.loadProducts();
+    },
+    selectItem(item) {
+      this.productItem = item;
+      this.productPage = 1;
+      this.loadProducts();
+    },
+    prevProductPage() {
+      if (this.productPage <= 1) return;
+      this.productPage -= 1;
+      this.loadProducts();
+    },
+    nextProductPage() {
+      if (!this.hasNextProductPage) return;
+      this.productPage += 1;
+      this.loadProducts();
+    },
+    openTour(tourId) {
+      this.$router.push({ name: 'tour', params: { tour_id: tourId } });
+    },
+    departureText(item) {
+      const d = item['旅遊開始日期'];
+      return d ? String(d).slice(0, 10) : '自由選擇';
+    },
+    priceText(item) {
+      return Number(item['促銷價錢'] ?? item['價錢']).toLocaleString('en-US');
+    },
     scrollToNext() {
       const section = document.querySelector('.home_content');
       if (section) {
@@ -638,6 +716,7 @@ export default {
     this.startAutoSlide(); // 開始自動在 Taiwan/World 間切換
 
     this.startAutoPlay();
+    this.loadProducts();
   },
 
   beforeUnmount() {
@@ -959,8 +1038,11 @@ h2::after {
   writing-mode: vertical-lr;
 }
 
-.product_content .content_left .type_group li a {
+.product_content .content_left .type_group li button {
   display: inline-block;
+  font-family: inherit;
+  background-color: transparent;
+  cursor: pointer;
   font-size: 14px;
   font-weight: 700;
 
@@ -978,12 +1060,12 @@ h2::after {
   margin-right: 20px;
 }
 
-.product_content .content_left .type_group a:hover {
+.product_content .content_left .type_group button:hover {
   background-color: #d4d4d4;
   color: #5b5b5b;
 }
 
-.product_content .content_left .type_group a:focus {
+.product_content .content_left .type_group button:focus-visible {
   color: #5b5b5b;
   background-color: transparent;
   border: 2px solid #d4d4d4;
@@ -1002,8 +1084,11 @@ h2::after {
   align-items: center;
 }
 
-.product_content .content_left .item_group a {
+.product_content .content_left .item_group button {
   display: inline-block;
+  font-family: inherit;
+  background-color: transparent;
+  cursor: pointer;
   font-size: 14px;
   font-weight: 700;
 
@@ -1017,7 +1102,7 @@ h2::after {
   transition: background-color 0.5s ease;
 }
 
-.product_content .content_left .item_group a:hover,
+.product_content .content_left .item_group button:hover,
 .product_content .content_left .item_group .active {
   background-color: #333333;
   border: 2px solid #333333;
@@ -1118,6 +1203,22 @@ h2::after {
 }
 
 /* product product_page */
+.product_content .content_left .product_page button {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.product_content .content_left .product_page button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.content_left .product_item .i_list {
+  cursor: pointer;
+}
+
 .product_content .content_left .product_page {
   display: flex;
   justify-content: center;
