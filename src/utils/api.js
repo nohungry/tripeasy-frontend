@@ -88,6 +88,77 @@ export async function get_tour_detail(tourId) {
   }
 }
 
+// [GET] 行程評論：沒有評論時回應沒有 data 鍵
+export async function get_tour_reviews(tourId, page, limit) {
+  const res = await withOptionalAuth((headers) =>
+    axios.get(`${apiUrl_product}/${encodeURIComponent(tourId)}/reviews`, {
+      headers,
+      params: { page, limit, lang: 'zh-TW' },
+    })
+  );
+  return res.data.data ?? { average_rating: 0, reviews: [] };
+}
+
+// [GET] 行程隱藏玩法：沒有資料時回應沒有 data 鍵
+export async function get_tour_hidden_shares(tourId, page, limit) {
+  const res = await withOptionalAuth((headers) =>
+    axios.get(`${apiUrl_product}/${encodeURIComponent(tourId)}/hidden-shares`, {
+      headers,
+      params: { page, limit, lang: 'zh-TW' },
+    })
+  );
+  return res.data.data ?? [];
+}
+
+// [GET] 寫入資格：沒有 token 不發請求；403（admin）與 401（過期）都當作不能寫，不導頁
+export async function get_tour_eligibility(tourId) {
+  const none = { can_write: false, has_reviewed: false };
+  const token = localStorage.getItem('authToken');
+  if (!token) return none;
+  try {
+    const res = await axios.get(`${apiUrl_product}/${encodeURIComponent(tourId)}/eligibility`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return res.data.data ?? none;
+  } catch (error) {
+    if (error?.sessionExpired || error.response?.status === 403) return none;
+    throw error;
+  }
+}
+
+async function postTourWrite(path, tourId, body) {
+  try {
+    const res = await axios.post(`${apiUrl_product}/${encodeURIComponent(tourId)}/${path}`, body, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
+    });
+    return res.data.data;
+  } catch (error) {
+    if (error?.sessionExpired) {
+      throw error; // 401 已由 interceptor 提示並導頁，不再跳自己的錯誤框
+    }
+    const data = error.response?.data;
+    Swal.fire({
+      icon: 'error',
+      title: data?.status || '網路錯誤',
+      text: data?.message || '無法連線到伺服器，請檢查網路後再試一次。',
+      scrollbarPadding: false,
+    });
+    throw error;
+  }
+}
+
+// [POST] 寫評論
+export function post_tour_review(tourId, { rating, content }) {
+  return postTourWrite('reviews', tourId, { rating, content });
+}
+
+// [POST] 分享隱藏玩法：url 為空字串時不送此鍵
+export function post_tour_hidden_share(tourId, { title, content, url }) {
+  const body = { title, content };
+  if (url !== '' && url !== null && url !== undefined) body.url = url;
+  return postTourWrite('hidden-shares', tourId, body);
+}
+
 // [GET] 首頁購物專區：type（tourgroup／backpacker）、item、page、limit
 export async function get_home_products({ type, item, page, limit }) {
   const res = await withOptionalAuth((headers) =>

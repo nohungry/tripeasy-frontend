@@ -135,19 +135,140 @@
           </ul>
         </section>
       </template>
+
+      <section class="mb-5" data-testid="review-section">
+        <h3 class="c-title">旅客評論</h3>
+        <p v-if="reviews.length" class="fw-bold">平均 {{ averageRating.toFixed(1) }} 分</p>
+        <p v-else class="text-muted">目前還沒有評論</p>
+        <ul class="list-unstyled">
+          <li v-for="r in reviews" :key="r.review_id" class="mb-3 border-bottom pb-2" data-testid="review-item">
+            <div>
+              <strong>{{ r.name }}</strong>
+              <span v-if="r.level && r.level.name" class="badge bg-info ms-2">{{ r.level.name }}</span>
+              <span class="ms-2">{{ r.rating }} 分</span>
+              <small class="text-muted ms-2">{{ dateText(r.create_date) }}</small>
+            </div>
+            <div class="illustrate">{{ r.content }}</div>
+          </li>
+        </ul>
+        <button v-if="hasMoreReviews" type="button" class="btn btn-outline-primary mb-3" @click="loadMoreReviews">
+          載入更多評論
+        </button>
+
+        <p v-if="!isLoggedIn" class="text-muted">
+          <span>登入後，購買過此行程的會員可以評論與分享隱藏玩法</span>
+          <router-link to="/admin/login" class="ms-2">登入</router-link>
+        </p>
+        <p v-else-if="!eligibility.can_write" class="text-muted">購買過此行程的會員才能評論與分享隱藏玩法</p>
+        <p v-else-if="eligibility.has_reviewed" class="text-success">你已評論過此行程</p>
+        <form v-else data-testid="review-form" @submit.prevent="submitReview">
+          <div class="mb-2">
+            <label for="review-rating" class="form-label">評分</label>
+            <select id="review-rating" v-model.number="reviewForm.rating" class="form-select">
+              <option v-for="n in 5" :key="n" :value="n">{{ n }}</option>
+            </select>
+          </div>
+          <div class="mb-2">
+            <label for="review-content" class="form-label">評論內容</label>
+            <textarea
+              id="review-content"
+              v-model="reviewForm.content"
+              class="form-control"
+              maxlength="500"
+              rows="3"
+            ></textarea>
+            <small class="text-muted">{{ reviewForm.content.length }}/500</small>
+          </div>
+          <button type="submit" class="btn btn-primary" :disabled="submitting">送出評論</button>
+        </form>
+      </section>
+
+      <section class="mb-5" data-testid="share-section">
+        <h3 class="c-title">隱藏玩法</h3>
+        <p v-if="!shares.length" class="text-muted">目前還沒有隱藏玩法</p>
+        <ul class="list-unstyled">
+          <li v-for="s in shares" :key="s.shares_id" class="mb-3 border-bottom pb-2" data-testid="share-item">
+            <h5>{{ s.title }}</h5>
+            <div class="illustrate">{{ s.content }}</div>
+            <small class="text-muted">{{ s.name }}　{{ dateText(s.create_date) }}</small>
+            <div v-if="safeUrl(s.url)">
+              <a :href="safeUrl(s.url)" target="_blank" rel="noopener noreferrer">查看分享連結</a>
+            </div>
+          </li>
+        </ul>
+        <button v-if="hasMoreShares" type="button" class="btn btn-outline-primary mb-3" @click="loadMoreShares">
+          載入更多玩法
+        </button>
+
+        <p v-if="!isLoggedIn" class="text-muted">
+          <span>登入後，購買過此行程的會員可以評論與分享隱藏玩法</span>
+          <router-link to="/admin/login" class="ms-2">登入</router-link>
+        </p>
+        <p v-else-if="!eligibility.can_write" class="text-muted">購買過此行程的會員才能評論與分享隱藏玩法</p>
+        <form v-else data-testid="share-form" @submit.prevent="submitShare">
+          <div class="mb-2">
+            <label for="share-title" class="form-label">標題</label>
+            <input id="share-title" v-model="shareForm.title" type="text" class="form-control" maxlength="50" />
+          </div>
+          <div class="mb-2">
+            <label for="share-content" class="form-label">內容</label>
+            <textarea
+              id="share-content"
+              v-model="shareForm.content"
+              class="form-control"
+              maxlength="1000"
+              rows="3"
+            ></textarea>
+          </div>
+          <div class="mb-2">
+            <label for="share-url" class="form-label">分享連結（選填）</label>
+            <input id="share-url" v-model="shareForm.url" type="text" class="form-control" />
+          </div>
+          <button type="submit" class="btn btn-primary" :disabled="submitting">分享玩法</button>
+        </form>
+      </section>
     </div>
   </div>
 </template>
 
 <script>
-import { get_tour_detail } from '@/utils/api.js';
+import Swal from 'sweetalert2';
+import { userStore } from '@/stores/userStore.js';
+import {
+  get_tour_detail,
+  get_tour_reviews,
+  get_tour_hidden_shares,
+  get_tour_eligibility,
+  post_tour_review,
+  post_tour_hidden_share,
+} from '@/utils/api.js';
+
+const PAGE_SIZE = 5;
 
 export default {
   name: 'tourPage',
   data() {
-    return { tour: null, loaded: false, error: false };
+    return {
+      tour: null,
+      loaded: false,
+      error: false,
+      averageRating: 0,
+      reviews: [],
+      reviewPage: 1,
+      hasMoreReviews: false,
+      shares: [],
+      sharePage: 1,
+      hasMoreShares: false,
+      eligibility: { can_write: false, has_reviewed: false },
+      reviewForm: { rating: 5, content: '' },
+      shareForm: { title: '', content: '', url: '' },
+      submitting: false,
+    };
   },
   computed: {
+    isLoggedIn() {
+      return userStore.isLoggedIn;
+    },
     spots() {
       return (this.tour?.image_spot || []).filter((s) => s && s.image_url);
     },
@@ -178,11 +299,75 @@ export default {
     async load() {
       try {
         this.tour = await get_tour_detail(this.$route.params.tour_id);
+        if (this.tour) {
+          // 評論、玩法、資格失敗不影響詳情顯示
+          await Promise.allSettled([this.loadReviews(), this.loadShares(), this.loadEligibility()]);
+        }
       } catch (err) {
         this.tour = null;
         this.error = true;
       } finally {
         this.loaded = true;
+      }
+    },
+    async loadReviews() {
+      const data = await get_tour_reviews(this.$route.params.tour_id, 1, PAGE_SIZE);
+      this.averageRating = Number(data.average_rating) || 0;
+      this.reviews = data.reviews ?? [];
+      this.reviewPage = 1;
+      this.hasMoreReviews = this.reviews.length === PAGE_SIZE;
+    },
+    async loadMoreReviews() {
+      const data = await get_tour_reviews(this.$route.params.tour_id, this.reviewPage + 1, PAGE_SIZE);
+      const more = data.reviews ?? [];
+      this.reviews = [...this.reviews, ...more];
+      this.reviewPage += 1;
+      this.hasMoreReviews = more.length === PAGE_SIZE;
+    },
+    async loadShares() {
+      const data = await get_tour_hidden_shares(this.$route.params.tour_id, 1, PAGE_SIZE);
+      this.shares = data;
+      this.sharePage = 1;
+      this.hasMoreShares = data.length === PAGE_SIZE;
+    },
+    async loadMoreShares() {
+      const data = await get_tour_hidden_shares(this.$route.params.tour_id, this.sharePage + 1, PAGE_SIZE);
+      this.shares = [...this.shares, ...data];
+      this.sharePage += 1;
+      this.hasMoreShares = data.length === PAGE_SIZE;
+    },
+    async loadEligibility() {
+      this.eligibility = await get_tour_eligibility(this.$route.params.tour_id);
+    },
+    async afterWrite(title) {
+      await Promise.allSettled([this.loadReviews(), this.loadShares(), this.loadEligibility()]);
+      Swal.fire({ icon: 'success', title, scrollbarPadding: false, timer: 1500, showConfirmButton: false });
+    },
+    async submitReview() {
+      this.submitting = true;
+      try {
+        await post_tour_review(this.$route.params.tour_id, {
+          rating: this.reviewForm.rating,
+          content: this.reviewForm.content,
+        });
+        this.reviewForm = { rating: 5, content: '' };
+        await this.afterWrite('評論成功');
+      } catch (err) {
+        // 錯誤提示已由 api.js 處理
+      } finally {
+        this.submitting = false;
+      }
+    },
+    async submitShare() {
+      this.submitting = true;
+      try {
+        await post_tour_hidden_share(this.$route.params.tour_id, { ...this.shareForm });
+        this.shareForm = { title: '', content: '', url: '' };
+        await this.afterWrite('分享成功');
+      } catch (err) {
+        // 錯誤提示已由 api.js 處理
+      } finally {
+        this.submitting = false;
       }
     },
     formatPrice(x) {
