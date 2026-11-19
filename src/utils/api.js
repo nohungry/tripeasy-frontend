@@ -99,6 +99,16 @@ export async function get_home_products({ type, item, page, limit }) {
   return res.data.data ?? [];
 }
 
+// [GET] 搜尋頁清單：值為 ''、null、undefined 的鍵不送
+export async function get_tour_list(query) {
+  const params = { lang: 'zh-TW' };
+  for (const [key, value] of Object.entries(query ?? {})) {
+    if (value !== '' && value !== null && value !== undefined) params[key] = value;
+  }
+  const res = await withOptionalAuth((headers) => axios.get(apiUrl_product, { headers, params }));
+  return res.data.data ?? [];
+}
+
 // [POST] 編號 01 : 使用者註冊、個人偏好設定
 export function post_user_SignUp(
   signUpName_txt,
