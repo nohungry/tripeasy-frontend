@@ -155,7 +155,8 @@ export function post_tour_review(tourId, { rating, content }) {
 // [POST] 分享隱藏玩法：url 為空字串時不送此鍵
 export function post_tour_hidden_share(tourId, { title, content, url }) {
   const body = { title, content };
-  if (url !== '' && url !== null && url !== undefined) body.url = url;
+  const trimmed = typeof url === 'string' ? url.trim() : '';
+  if (trimmed !== '') body.url = trimmed;
   return postTourWrite('hidden-shares', tourId, body);
 }
 

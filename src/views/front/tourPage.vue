@@ -151,7 +151,7 @@
             <div class="illustrate">{{ r.content }}</div>
           </li>
         </ul>
-        <button v-if="hasMoreReviews" type="button" class="btn btn-outline-primary mb-3" @click="loadMoreReviews">
+        <button v-if="hasMoreReviews" type="button" class="btn btn-outline-primary mb-3" :disabled="loadingMoreReviews" @click="loadMoreReviews">
           載入更多評論
         </button>
 
@@ -159,6 +159,7 @@
           <span>登入後，購買過此行程的會員可以評論與分享隱藏玩法</span>
           <router-link to="/admin/login" class="ms-2">登入</router-link>
         </p>
+        <p v-else-if="!eligibilityLoaded" class="text-muted"></p>
         <p v-else-if="!eligibility.can_write" class="text-muted">購買過此行程的會員才能評論與分享隱藏玩法</p>
         <p v-else-if="eligibility.has_reviewed" class="text-success">你已評論過此行程</p>
         <form v-else data-testid="review-form" @submit.prevent="submitReview">
@@ -196,7 +197,7 @@
             </div>
           </li>
         </ul>
-        <button v-if="hasMoreShares" type="button" class="btn btn-outline-primary mb-3" @click="loadMoreShares">
+        <button v-if="hasMoreShares" type="button" class="btn btn-outline-primary mb-3" :disabled="loadingMoreShares" @click="loadMoreShares">
           載入更多玩法
         </button>
 
@@ -204,6 +205,7 @@
           <span>登入後，購買過此行程的會員可以評論與分享隱藏玩法</span>
           <router-link to="/admin/login" class="ms-2">登入</router-link>
         </p>
+        <p v-else-if="!eligibilityLoaded" class="text-muted"></p>
         <p v-else-if="!eligibility.can_write" class="text-muted">購買過此行程的會員才能評論與分享隱藏玩法</p>
         <form v-else data-testid="share-form" @submit.prevent="submitShare">
           <div class="mb-2">
@@ -260,6 +262,9 @@ export default {
       sharePage: 1,
       hasMoreShares: false,
       eligibility: { can_write: false, has_reviewed: false },
+      eligibilityLoaded: false,
+      loadingMoreReviews: false,
+      loadingMoreShares: false,
       reviewForm: { rating: 5, content: '' },
       shareForm: { title: '', content: '', url: '' },
       submitting: false,
@@ -318,11 +323,19 @@ export default {
       this.hasMoreReviews = this.reviews.length === PAGE_SIZE;
     },
     async loadMoreReviews() {
-      const data = await get_tour_reviews(this.$route.params.tour_id, this.reviewPage + 1, PAGE_SIZE);
-      const more = data.reviews ?? [];
-      this.reviews = [...this.reviews, ...more];
-      this.reviewPage += 1;
-      this.hasMoreReviews = more.length === PAGE_SIZE;
+      if (this.loadingMoreReviews) return;
+      this.loadingMoreReviews = true;
+      try {
+        const data = await get_tour_reviews(this.$route.params.tour_id, this.reviewPage + 1, PAGE_SIZE);
+        const more = data.reviews ?? [];
+        this.reviews = [...this.reviews, ...more];
+        this.reviewPage += 1;
+        this.hasMoreReviews = more.length === PAGE_SIZE;
+      } catch (err) {
+        // 失敗時保留現有列表，可再按一次
+      } finally {
+        this.loadingMoreReviews = false;
+      }
     },
     async loadShares() {
       const data = await get_tour_hidden_shares(this.$route.params.tour_id, 1, PAGE_SIZE);
@@ -331,13 +344,25 @@ export default {
       this.hasMoreShares = data.length === PAGE_SIZE;
     },
     async loadMoreShares() {
-      const data = await get_tour_hidden_shares(this.$route.params.tour_id, this.sharePage + 1, PAGE_SIZE);
-      this.shares = [...this.shares, ...data];
-      this.sharePage += 1;
-      this.hasMoreShares = data.length === PAGE_SIZE;
+      if (this.loadingMoreShares) return;
+      this.loadingMoreShares = true;
+      try {
+        const data = await get_tour_hidden_shares(this.$route.params.tour_id, this.sharePage + 1, PAGE_SIZE);
+        this.shares = [...this.shares, ...data];
+        this.sharePage += 1;
+        this.hasMoreShares = data.length === PAGE_SIZE;
+      } catch (err) {
+        // 失敗時保留現有列表，可再按一次
+      } finally {
+        this.loadingMoreShares = false;
+      }
     },
     async loadEligibility() {
-      this.eligibility = await get_tour_eligibility(this.$route.params.tour_id);
+      try {
+        this.eligibility = await get_tour_eligibility(this.$route.params.tour_id);
+      } finally {
+        this.eligibilityLoaded = true;
+      }
     },
     async afterWrite(title) {
       await Promise.allSettled([this.loadReviews(), this.loadShares(), this.loadEligibility()]);
@@ -353,7 +378,8 @@ export default {
         this.reviewForm = { rating: 5, content: '' };
         await this.afterWrite('評論成功');
       } catch (err) {
-        // 錯誤提示已由 api.js 處理
+        // 錯誤提示已由 api.js 處理；409 代表已評論過，重讀資格讓表單換成提示
+        if (err?.response?.status === 409) await this.loadEligibility();
       } finally {
         this.submitting = false;
       }
