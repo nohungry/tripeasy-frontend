@@ -9,19 +9,52 @@ const apiUrl = `${baseUrl}/api/${version}/auth/userinfo`;
 
 const apiUrl_userprofile = `${baseUrl}/api/${version}/user/userinfo`;
 
-// 401 統一處理：只限會員 API（apiUrl_userprofile 底下與 /resetprofilepw）。
-// 刻意不包含 /login/status、/login/email、/login/google：router.beforeEach 在
-// login / register / forgotpw / resetpw 頁會帶（可能已過期的）token 打 /login/status，
-// 若一律處理，重設密碼信的連結會被導回登入頁。
-const memberApiPrefixes = [apiUrl_userprofile, `${apiUrl}/resetprofilepw`];
+const apiUrl_product = `${baseUrl}/api/${version}/user/product/search`;
+const apiUrl_home = `${baseUrl}/api/${version}/user/home/search`;
+
+// 401 統一處理：凡是「有帶 Authorization」的請求回 401，一律登出、標記 sessionExpired、
+// 顯示「登入已過期」。排除 /login/status、/login/email、/login/google：
+// router.beforeEach 在 login / register / forgotpw / resetpw 頁會帶（可能已過期的）token 打
+// /login/status，requireAuth 也自己處理；若一律處理，重設密碼信的連結會被導回登入頁。
+function isAuthExempt(url) {
+  return [`${apiUrl}/login/status`, `${apiUrl}/login/email`, `${apiUrl}/login/google`].some((p) =>
+    url.startsWith(p)
+  );
+}
+
+// 會員 API：401 時除了提示，還要導回登入頁。商品的 GET（公開讀取）與 /eligibility
+// （詳情頁載入時自動呼叫）不算，留在原頁（P3 spec §6.6）。
+function isMemberApi(config) {
+  const url = config?.url || '';
+  return (
+    url.startsWith(apiUrl_userprofile) ||
+    url.startsWith(`${apiUrl}/resetprofilepw`) ||
+    (url.startsWith(apiUrl_product) && config?.method === 'post')
+  );
+}
+
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
     const url = error.config?.url || '';
-    if (error.response?.status === 401 && memberApiPrefixes.some((p) => url.startsWith(p))) {
+    if (
+      error.response?.status === 401 &&
+      error.config?.headers?.Authorization &&
+      !isAuthExempt(url)
+    ) {
       userStore.logout();
-      Swal.close();
-      router.replace('/admin/login');
+      error.sessionExpired = true;
+      Swal.fire({
+        icon: 'warning',
+        title: '登入已過期',
+        text: '請重新登入',
+        scrollbarPadding: false,
+        timer: 2000,
+        showConfirmButton: false,
+      });
+      if (isMemberApi(error.config)) {
+        router.replace('/admin/login');
+      }
     }
     return Promise.reject(error);
   }
@@ -48,12 +81,9 @@ export function post_user_SignUp(
         title: res.data.status,
         text: res.data.message,
         scrollbarPadding: false,
-      });
-
-      setTimeout(() => {
-        Swal.close();
-        router.push('/admin/login');
-      }, 3000);
+        timer: 3000,
+        timerProgressBar: true,
+      }).then(() => router.push('/admin/login'));
     })
     .catch((error) => {
       Swal.fire({
@@ -99,12 +129,9 @@ export function post_user_LoginEmail(signUpEmail_txt, signUpPwd_txt, onComplete)
         title: res.data.status,
         text: res.data.message,
         scrollbarPadding: false,
-      });
-
-      setTimeout(() => {
-        Swal.close();
-        router.push('/admin/userprofile');
-      }, 3000);
+        timer: 3000,
+        timerProgressBar: true,
+      }).then(() => router.push('/admin/userprofile'));
     })
     .catch((error) => {
       console.log(error);
@@ -150,12 +177,9 @@ export function post_user_LoginGoogle(code) {
         title: res.data.status,
         text: res.data.message,
         scrollbarPadding: false,
-      });
-
-      setTimeout(() => {
-        Swal.close();
-        router.push('/admin/userprofile');
-      }, 3000);
+        timer: 3000,
+        timerProgressBar: true,
+      }).then(() => router.push('/admin/userprofile'));
     })
     .catch((error) => {
       Swal.fire({
@@ -223,12 +247,9 @@ export function post_user_resetPW(
         title: res.data.status,
         text: res.data.message,
         scrollbarPadding: false,
-      });
-
-      setTimeout(() => {
-        Swal.close();
-        router.push('/admin/login');
-      }, 3000);
+        timer: 3000,
+        timerProgressBar: true,
+      }).then(() => router.push('/admin/login'));
     })
     .catch((error) => {
       Swal.fire({
@@ -322,6 +343,9 @@ export async function patch_user_Profile(payload) {
     userStore.status(res.data);
     return res.data;
   } catch (error) {
+    if (error?.sessionExpired) {
+      throw error; // 401 已由 interceptor 提示並導頁，不再跳自己的錯誤框
+    }
     const data = error.response?.data;
     Swal.fire({
       icon: 'error',
@@ -348,6 +372,9 @@ export async function patch_user_Avatar(file) {
     userStore.userPicture = avatarUrl;
     return res.data.data;
   } catch (error) {
+    if (error?.sessionExpired) {
+      throw error; // 401 已由 interceptor 提示並導頁，不再跳自己的錯誤框
+    }
     const data = error.response?.data;
     Swal.fire({
       icon: 'error',
@@ -389,6 +416,9 @@ export function post_user_resetProfilePW(Pwd_txt, NewPwd_txt, NewaginPwd_txt, on
       router.push('/admin/login');
     })
     .catch((error) => {
+      if (error?.sessionExpired) {
+        return; // 401 已由 interceptor 提示並導頁
+      }
       Swal.fire({
         icon: 'error',
         title: error.response.data.status,
