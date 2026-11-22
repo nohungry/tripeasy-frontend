@@ -9,23 +9,177 @@ const apiUrl = `${baseUrl}/api/${version}/auth/userinfo`;
 
 const apiUrl_userprofile = `${baseUrl}/api/${version}/user/userinfo`;
 
-// 401 統一處理：只限會員 API（apiUrl_userprofile 底下與 /resetprofilepw）。
-// 刻意不包含 /login/status、/login/email、/login/google：router.beforeEach 在
-// login / register / forgotpw / resetpw 頁會帶（可能已過期的）token 打 /login/status，
-// 若一律處理，重設密碼信的連結會被導回登入頁。
-const memberApiPrefixes = [apiUrl_userprofile, `${apiUrl}/resetprofilepw`];
+const apiUrl_product = `${baseUrl}/api/${version}/user/product/search`;
+const apiUrl_home = `${baseUrl}/api/${version}/user/home/search`;
+
+// 401 統一處理：凡是「有帶 Authorization」的請求回 401，一律登出、標記 sessionExpired、
+// 顯示「登入已過期」。排除 /login/status、/login/email、/login/google：
+// router.beforeEach 在 login / register / forgotpw / resetpw 頁會帶（可能已過期的）token 打
+// /login/status，requireAuth 也自己處理；若一律處理，重設密碼信的連結會被導回登入頁。
+function isAuthExempt(url) {
+  return [`${apiUrl}/login/status`, `${apiUrl}/login/email`, `${apiUrl}/login/google`].some((p) =>
+    url.startsWith(p)
+  );
+}
+
+// 會員 API：401 時除了提示，還要導回登入頁。商品的 GET（公開讀取）與 /eligibility
+// （詳情頁載入時自動呼叫）不算，留在原頁（P3 spec §6.6）。
+function isMemberApi(config) {
+  const url = config?.url || '';
+  return (
+    url.startsWith(apiUrl_userprofile) ||
+    url.startsWith(`${apiUrl}/resetprofilepw`) ||
+    (url.startsWith(apiUrl_product) && config?.method === 'post')
+  );
+}
+
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
     const url = error.config?.url || '';
-    if (error.response?.status === 401 && memberApiPrefixes.some((p) => url.startsWith(p))) {
+    if (
+      error.response?.status === 401 &&
+      error.config?.headers?.Authorization &&
+      !isAuthExempt(url)
+    ) {
       userStore.logout();
-      Swal.close();
-      router.replace('/admin/login');
+      error.sessionExpired = true;
+      Swal.fire({
+        icon: 'warning',
+        title: '登入已過期',
+        text: '請重新登入',
+        scrollbarPadding: false,
+        timer: 2000,
+        showConfirmButton: false,
+      });
+      if (isMemberApi(error.config)) {
+        router.replace('/admin/login');
+      }
     }
     return Promise.reject(error);
   }
 );
+
+// 公開讀取：有 token 才帶 Authorization（避免送出 Bearer null）。token 已過期時 interceptor 會
+// 登出並標 sessionExpired，這裡不帶 token 再試一次，讓訪客仍看得到公開頁。
+export async function withOptionalAuth(request) {
+  const token = localStorage.getItem('authToken');
+  try {
+    return await request(token ? { Authorization: `Bearer ${token}` } : {});
+  } catch (error) {
+    if (token && error?.sessionExpired) {
+      return await request({});
+    }
+    throw error;
+  }
+}
+
+// [GET] 商品詳情：400／404 回 null
+export async function get_tour_detail(tourId) {
+  try {
+    const res = await withOptionalAuth((headers) =>
+      axios.get(`${apiUrl_product}/${encodeURIComponent(tourId)}`, { headers, params: { lang: 'zh-TW' } })
+    );
+    return res.data.data;
+  } catch (error) {
+    const status = error.response?.status;
+    if (status === 400 || status === 404) return null;
+    throw error;
+  }
+}
+
+// [GET] 行程評論：沒有評論時回應沒有 data 鍵
+export async function get_tour_reviews(tourId, page, limit) {
+  const res = await withOptionalAuth((headers) =>
+    axios.get(`${apiUrl_product}/${encodeURIComponent(tourId)}/reviews`, {
+      headers,
+      params: { page, limit, lang: 'zh-TW' },
+    })
+  );
+  return res.data.data ?? { average_rating: 0, reviews: [] };
+}
+
+// [GET] 行程隱藏玩法：沒有資料時回應沒有 data 鍵
+export async function get_tour_hidden_shares(tourId, page, limit) {
+  const res = await withOptionalAuth((headers) =>
+    axios.get(`${apiUrl_product}/${encodeURIComponent(tourId)}/hidden-shares`, {
+      headers,
+      params: { page, limit, lang: 'zh-TW' },
+    })
+  );
+  return res.data.data ?? [];
+}
+
+// [GET] 寫入資格：沒有 token 不發請求；403（admin）與 401（過期）都當作不能寫，不導頁
+export async function get_tour_eligibility(tourId) {
+  const none = { can_write: false, has_reviewed: false };
+  const token = localStorage.getItem('authToken');
+  if (!token) return none;
+  try {
+    const res = await axios.get(`${apiUrl_product}/${encodeURIComponent(tourId)}/eligibility`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return res.data.data ?? none;
+  } catch (error) {
+    if (error?.sessionExpired || error.response?.status === 403) return none;
+    throw error;
+  }
+}
+
+async function postTourWrite(path, tourId, body) {
+  try {
+    const res = await axios.post(`${apiUrl_product}/${encodeURIComponent(tourId)}/${path}`, body, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
+    });
+    return res.data.data;
+  } catch (error) {
+    if (error?.sessionExpired) {
+      throw error; // 401 已由 interceptor 提示並導頁，不再跳自己的錯誤框
+    }
+    const data = error.response?.data;
+    Swal.fire({
+      icon: 'error',
+      title: data?.status || '網路錯誤',
+      text: data?.message || '無法連線到伺服器，請檢查網路後再試一次。',
+      scrollbarPadding: false,
+    });
+    throw error;
+  }
+}
+
+// [POST] 寫評論
+export function post_tour_review(tourId, { rating, content }) {
+  return postTourWrite('reviews', tourId, { rating, content });
+}
+
+// [POST] 分享隱藏玩法：url 為空字串時不送此鍵
+export function post_tour_hidden_share(tourId, { title, content, url }) {
+  const body = { title, content };
+  const trimmed = typeof url === 'string' ? url.trim() : '';
+  if (trimmed !== '') body.url = trimmed;
+  return postTourWrite('hidden-shares', tourId, body);
+}
+
+// [GET] 首頁購物專區：type（tourgroup／backpacker）、item、page、limit
+export async function get_home_products({ type, item, page, limit }) {
+  const res = await withOptionalAuth((headers) =>
+    axios.get(`${apiUrl_home}/products`, {
+      headers,
+      params: { type, item, page, limit, lang: 'zh-TW' },
+    })
+  );
+  return res.data.data ?? [];
+}
+
+// [GET] 搜尋頁清單：值為 ''、null、undefined 的鍵不送
+export async function get_tour_list(query) {
+  const params = { lang: 'zh-TW' };
+  for (const [key, value] of Object.entries(query ?? {})) {
+    if (value !== '' && value !== null && value !== undefined) params[key] = value;
+  }
+  const res = await withOptionalAuth((headers) => axios.get(apiUrl_product, { headers, params }));
+  return res.data.data ?? [];
+}
 
 // [POST] 編號 01 : 使用者註冊、個人偏好設定
 export function post_user_SignUp(
@@ -48,12 +202,9 @@ export function post_user_SignUp(
         title: res.data.status,
         text: res.data.message,
         scrollbarPadding: false,
-      });
-
-      setTimeout(() => {
-        Swal.close();
-        router.push('/admin/login');
-      }, 3000);
+        timer: 3000,
+        timerProgressBar: true,
+      }).then(() => router.push('/admin/login'));
     })
     .catch((error) => {
       Swal.fire({
@@ -99,12 +250,9 @@ export function post_user_LoginEmail(signUpEmail_txt, signUpPwd_txt, onComplete)
         title: res.data.status,
         text: res.data.message,
         scrollbarPadding: false,
-      });
-
-      setTimeout(() => {
-        Swal.close();
-        router.push('/admin/userprofile');
-      }, 3000);
+        timer: 3000,
+        timerProgressBar: true,
+      }).then(() => router.push('/admin/userprofile'));
     })
     .catch((error) => {
       console.log(error);
@@ -150,12 +298,9 @@ export function post_user_LoginGoogle(code) {
         title: res.data.status,
         text: res.data.message,
         scrollbarPadding: false,
-      });
-
-      setTimeout(() => {
-        Swal.close();
-        router.push('/admin/userprofile');
-      }, 3000);
+        timer: 3000,
+        timerProgressBar: true,
+      }).then(() => router.push('/admin/userprofile'));
     })
     .catch((error) => {
       Swal.fire({
@@ -223,12 +368,9 @@ export function post_user_resetPW(
         title: res.data.status,
         text: res.data.message,
         scrollbarPadding: false,
-      });
-
-      setTimeout(() => {
-        Swal.close();
-        router.push('/admin/login');
-      }, 3000);
+        timer: 3000,
+        timerProgressBar: true,
+      }).then(() => router.push('/admin/login'));
     })
     .catch((error) => {
       Swal.fire({
@@ -322,6 +464,9 @@ export async function patch_user_Profile(payload) {
     userStore.status(res.data);
     return res.data;
   } catch (error) {
+    if (error?.sessionExpired) {
+      throw error; // 401 已由 interceptor 提示並導頁，不再跳自己的錯誤框
+    }
     const data = error.response?.data;
     Swal.fire({
       icon: 'error',
@@ -348,6 +493,9 @@ export async function patch_user_Avatar(file) {
     userStore.userPicture = avatarUrl;
     return res.data.data;
   } catch (error) {
+    if (error?.sessionExpired) {
+      throw error; // 401 已由 interceptor 提示並導頁，不再跳自己的錯誤框
+    }
     const data = error.response?.data;
     Swal.fire({
       icon: 'error',
@@ -389,6 +537,9 @@ export function post_user_resetProfilePW(Pwd_txt, NewPwd_txt, NewaginPwd_txt, on
       router.push('/admin/login');
     })
     .catch((error) => {
+      if (error?.sessionExpired) {
+        return; // 401 已由 interceptor 提示並導頁
+      }
       Swal.fire({
         icon: 'error',
         title: error.response.data.status,

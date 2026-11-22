@@ -138,6 +138,11 @@ const navOpen = ref(false);
 const dropdownOpen = ref(false);
 const levelIcon = new URL('@/assets/img/badge/badge01.svg', import.meta.url).href;
 
+function search() {
+  const keyword = searchText.value.trim();
+  router.push({ path: '/search', query: keyword ? { keyword } : {} });
+}
+
 function setLanguage(lang) {
   language.value = lang;
 }
