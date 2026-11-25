@@ -202,7 +202,15 @@ async function tradeRequest(request) {
     return await request();
   } catch (error) {
     if (error?.sessionExpired) throw error;
-    const data = error.response?.data;
+    let data = error.response?.data;
+    // responseType: 'text' 的請求，錯誤回應 body 是字串；嘗試解析成 JSON 才讀得到 status／message
+    if (typeof data === 'string') {
+      try {
+        data = JSON.parse(data);
+      } catch (parseError) {
+        data = null;
+      }
+    }
     Swal.fire({
       icon: 'error',
       title: data?.status || '網路錯誤',

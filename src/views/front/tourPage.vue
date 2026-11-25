@@ -68,7 +68,7 @@
               </div>
               <div class="mb-2">
                 <label for="order-end" class="form-label">結束日期</label>
-                <input id="order-end" v-model="orderForm.endDate" type="date" :min="todayText" class="form-control" />
+                <input id="order-end" v-model="orderForm.endDate" type="date" :min="orderForm.startDate || todayText" class="form-control" />
               </div>
             </template>
             <div v-if="tour.item === 'hotel'" class="mb-2">

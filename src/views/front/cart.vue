@@ -19,6 +19,10 @@
 
         <p v-if="loading" class="text-muted">載入中…</p>
 
+        <div v-else-if="loadError" class="text-center text-muted py-5" data-testid="cart-load-error">
+          購物車載入失敗，請重新整理頁面
+        </div>
+
         <div v-else-if="items.length === 0" class="text-center text-muted py-5" data-testid="cart-empty">
           購物車是空的
         </div>
@@ -78,6 +82,7 @@
 
 <script>
 import HeaderComponent from '@/components/HeaderComponent.vue';
+import Swal from 'sweetalert2';
 import { userStore } from '@/stores/userStore.js';
 import { get_cart_list, patch_cart_item, delete_cart_item, post_order } from '@/utils/api.js';
 
@@ -90,6 +95,7 @@ export default {
       summary: { total_items: 0, total_price: 0 },
       cartId: null,
       loading: true,
+      loadError: false,
       busy: false,
     };
   },
@@ -108,8 +114,10 @@ export default {
         this.items = res.data || [];
         this.summary = res.summary || { total_items: 0, total_price: 0 };
         this.cartId = this.items[0]?.cart_id ?? null;
+        this.loadError = false;
       } catch (err) {
-        // 錯誤提示已由 api 層顯示
+        // 錯誤提示已由 api 層顯示；載入失敗不能顯示成「購物車是空的」
+        this.loadError = true;
       }
     },
     async changePeople(row, event) {
@@ -150,7 +158,12 @@ export default {
       if (this.busy || !this.cartId) return;
       this.busy = true;
       try {
-        const { order_id } = await post_order(this.cartId);
+        const created = await post_order(this.cartId);
+        const order_id = created?.order_id;
+        if (!order_id) {
+          Swal.fire({ icon: 'error', title: '建立訂單失敗', text: '未取得訂單編號，請稍後再試', scrollbarPadding: false });
+          return;
+        }
         this.$router.push({ name: 'pay', query: { order: order_id } });
       } catch (err) {
         // 錯誤提示已由 api 層顯示
