@@ -72,7 +72,7 @@
                 </div>
               </div>
 
-              <button type="submit" class="btn btn-dark mt-4 w-100" :disabled="busy">
+              <button type="submit" class="btn btn-dark mt-4 w-100" :disabled="busy || !loaded">
                 確認並前往付款
               </button>
             </form>
@@ -161,6 +161,9 @@ export default {
       orders: [],
       sum: { total_price: 0, promo_subtotal: 0, discount_amount: 0, payable: 0 },
       busy: false,
+      loaded: false, // 初始載入（預填資料、金額）完成前不可送出
+      seq: 0, // 金額請求序號，只採用最新一次的回應
+      pendingTrial: null,
     };
   },
   async mounted() {
@@ -170,6 +173,7 @@ export default {
       return;
     }
     this.orderId = String(orderId);
+    const mySeq = ++this.seq;
     try {
       const [info, pc, summary] = await Promise.all([
         get_checkout_userinfo(this.orderId),
@@ -182,7 +186,7 @@ export default {
       this.points = pc.points;
       this.coupons = pc.coupons;
       this.orders = summary.orders ?? [];
-      this.sum = summary.summary;
+      if (mySeq === this.seq) this.sum = summary.summary;
       // 重新付款時，訂單可能已保留折扣，讓畫面與保留一致
       const d = summary.discount;
       if (d?.type === 'coupon' && d.coupon_id) {
@@ -192,8 +196,9 @@ export default {
         this.discountType = 'point';
         this.usedPoint = d.used_point ?? 0;
       }
+      this.loaded = true;
     } catch (error) {
-      // 錯誤提示已由 api 層顯示
+      // 錯誤提示已由 api 層顯示；載入失敗時維持不可送出
     }
   },
   methods: {
@@ -214,19 +219,24 @@ export default {
       }
       await this.trial();
     },
-    async trial() {
+    trial() {
+      this.pendingTrial = this.runTrial();
+      return this.pendingTrial;
+    },
+    async runTrial() {
+      const mySeq = ++this.seq;
       try {
         let data;
-        if (this.discountType === 'none') {
+        const coupon = this.coupons.find((c) => c.coupon_id === this.couponId);
+        if (this.discountType === 'none' || (this.discountType === 'coupon' && !coupon)) {
+          // 沒有選用折扣（或沒有可選的優惠卷）：取消保留，金額回到未折扣
           data = await cancel_discount(this.orderId);
         } else if (this.discountType === 'coupon') {
-          const coupon = this.coupons.find((c) => c.coupon_id === this.couponId);
-          if (!coupon) return;
           data = await post_discount_trial(this.orderId, { type: 'coupon', discount: { coupon: coupon.code } });
         } else {
           data = await post_discount_trial(this.orderId, { type: 'point', discount: { point: Number(this.usedPoint) || 0 } });
         }
-        this.sum = data.summary;
+        if (mySeq === this.seq) this.sum = data.summary;
       } catch (error) {
         // 錯誤提示已由 api 層顯示，金額維持原狀
       }
@@ -237,9 +247,10 @@ export default {
       return null; // 不使用折扣時不帶 discount（後端只接受 coupon／point）
     },
     async submit() {
-      if (this.busy) return;
+      if (this.busy || !this.loaded) return;
       this.busy = true;
       try {
+        if (this.pendingTrial) await this.pendingTrial; // 等進行中的折扣試算完成再送出
         const body = {
           user: {
             name: this.form.name,

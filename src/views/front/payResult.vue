@@ -17,6 +17,8 @@
 
         <p v-else-if="state === 'expired'" class="fs-5">付款逾時</p>
         <p v-else-if="state === 'cancelled'" class="fs-5">訂單已取消</p>
+        <p v-else-if="state === 'refunded'" class="fs-5">訂單已退款</p>
+        <p v-else-if="state === 'other'" class="fs-5">訂單狀態：{{ summary.payment_status }}</p>
 
         <template v-else-if="state === 'unpaid'">
           <p class="fs-5">付款未完成</p>
@@ -40,7 +42,7 @@ export default {
   name: 'payResult',
   components: { HeaderComponent, FooterComponent },
   data() {
-    return { orderId: '', state: 'loading', summary: {}, timer: null, polls: 0 };
+    return { orderId: '', state: 'loading', summary: {}, timer: null, polls: 0, stopped: false };
   },
   mounted() {
     const orderId = this.$route.query.order;
@@ -52,6 +54,7 @@ export default {
     this.poll();
   },
   beforeUnmount() {
+    this.stopped = true;
     clearTimeout(this.timer);
   },
   methods: {
@@ -67,13 +70,17 @@ export default {
         this.summary = data.summary;
         status = data.summary.payment_status;
       } catch (error) {
+        if (this.stopped) return;
         // 錯誤提示已由 api 層顯示；查不到訂單就不再輪詢
         this.state = 'noOrder';
         return;
       }
+      if (this.stopped) return; // 離開頁面後不再更新或排程
       if (status === 1) this.state = 'paid';
       else if (status === 4) this.state = 'expired';
       else if (status === 2) this.state = 'cancelled';
+      else if (status === 3) this.state = 'refunded';
+      else if (status !== 0) this.state = 'other';
       else if (this.polls >= MAX_POLLS) this.state = 'unpaid';
       else this.timer = setTimeout(() => this.poll(), 1000);
     },
