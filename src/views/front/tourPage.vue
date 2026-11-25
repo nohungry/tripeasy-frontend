@@ -50,7 +50,36 @@
               >Google Map</a
             >
           </p>
-          <button type="button" class="btn btn-primary" disabled>加入購物車（即將開放）</button>
+          <form class="order-box mt-3" data-testid="order-form" @submit.prevent="addToCart">
+            <div class="mb-2">
+              <label for="order-people" class="form-label">人數</label>
+              <input id="order-people" v-model.number="orderForm.people" type="number" min="1" step="1" class="form-control" />
+            </div>
+            <template v-if="tour.item === 'food'">
+              <div class="mb-2">
+                <label for="order-start" class="form-label">預約時間</label>
+                <input id="order-start" v-model="orderForm.startDateTime" type="datetime-local" :min="todayText + 'T00:00'" class="form-control" />
+              </div>
+            </template>
+            <template v-else>
+              <div class="mb-2">
+                <label for="order-start" class="form-label">出發日期</label>
+                <input id="order-start" v-model="orderForm.startDate" type="date" :min="todayText" class="form-control" />
+              </div>
+              <div class="mb-2">
+                <label for="order-end" class="form-label">結束日期</label>
+                <input id="order-end" v-model="orderForm.endDate" type="date" :min="todayText" class="form-control" />
+              </div>
+            </template>
+            <div v-if="tour.item === 'hotel'" class="mb-2">
+              <label for="order-room" class="form-label">房型</label>
+              <select id="order-room" v-model="orderForm.roomType" class="form-select" :disabled="!roomNames.length">
+                <option v-for="name in roomNames" :key="name" :value="name">{{ name }}</option>
+              </select>
+            </div>
+            <p v-if="hotelWithoutRooms" class="text-muted">此行程暫不開放線上訂購</p>
+            <button type="submit" class="btn btn-primary" :disabled="hotelWithoutRooms || adding">加入購物車</button>
+          </form>
         </div>
       </div>
 
@@ -243,6 +272,7 @@ import {
   get_tour_eligibility,
   post_tour_review,
   post_tour_hidden_share,
+  post_cart_item,
 } from '@/utils/api.js';
 
 const PAGE_SIZE = 5;
@@ -268,6 +298,8 @@ export default {
       reviewForm: { rating: 5, content: '' },
       shareForm: { title: '', content: '', url: '' },
       submitting: false,
+      adding: false,
+      orderForm: { people: 1, startDate: '', endDate: '', startDateTime: '', roomType: '' },
     };
   },
   computed: {
@@ -283,6 +315,15 @@ export default {
     },
     rooms() {
       return this.tour?.feature?.room || [];
+    },
+    roomNames() {
+      return this.rooms.map((r) => r && r.name).filter(Boolean);
+    },
+    hotelWithoutRooms() {
+      return this.tour?.item === 'hotel' && this.roomNames.length === 0;
+    },
+    todayText() {
+      return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' });
     },
     services() {
       return (this.tour?.feature?.service || []).filter((s) => s && s.item);
@@ -305,6 +346,7 @@ export default {
       try {
         this.tour = await get_tour_detail(this.$route.params.tour_id);
         if (this.tour) {
+          this.initOrderForm();
           // 評論、玩法、資格失敗不影響詳情顯示
           await Promise.allSettled([this.loadReviews(), this.loadShares(), this.loadEligibility()]);
         }
@@ -313,6 +355,49 @@ export default {
         this.error = true;
       } finally {
         this.loaded = true;
+      }
+    },
+    initOrderForm() {
+      const start = this.tour.date_start ? String(this.tour.date_start).slice(0, 10) : this.todayText;
+      const end = this.tour.date_end ? String(this.tour.date_end).slice(0, 10) : start;
+      this.orderForm.startDate = start < this.todayText ? this.todayText : start;
+      this.orderForm.endDate = end < this.orderForm.startDate ? this.orderForm.startDate : end;
+      this.orderForm.startDateTime = `${this.orderForm.startDate}T12:00`;
+      this.orderForm.roomType = this.roomNames[0] || '';
+    },
+    async addToCart() {
+      if (!userStore.isLoggedIn) {
+        this.$router.push('/admin/login');
+        return;
+      }
+      if (this.adding) return;
+      const f = this.orderForm;
+      let options;
+      if (this.tour.item === 'food') {
+        options = { start_date: f.startDateTime };
+      } else {
+        options = { start_date: f.startDate, end_date: f.endDate };
+        if (this.tour.item === 'hotel') options.room_type = f.roomType;
+      }
+      this.adding = true;
+      try {
+        await post_cart_item(this.tour.tour_id || this.$route.params.tour_id, {
+          type: this.tour.type,
+          item: this.tour.item,
+          people: f.people,
+          options,
+        });
+        Swal.fire({
+          icon: 'success',
+          title: '已加入購物車',
+          scrollbarPadding: false,
+          timer: 1500,
+          showConfirmButton: false,
+        });
+      } catch (err) {
+        // 錯誤提示已由 api 層顯示
+      } finally {
+        this.adding = false;
       }
     },
     async loadReviews() {
