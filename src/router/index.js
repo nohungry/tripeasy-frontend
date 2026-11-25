@@ -49,7 +49,13 @@ const router = createRouter({
           path: 'pay',
           name: 'pay',
           component: () => import('../views/front/pay.vue'),
-          meta: { title: '產品細項(假資料)' }
+          meta: { title: '填寫付款資料' }
+        },
+        {
+          path: 'pay/result',
+          name: 'payResult',
+          component: () => import('../views/front/payResult.vue'),
+          meta: { title: '付款結果' }
         },
 
         //購物車頁面
@@ -62,7 +68,7 @@ const router = createRouter({
               path: '',
               name: 'cart1',
               component: () => import('../views/front/cart.vue'),
-              meta: { title: '產品細項(假資料)' }
+              meta: { title: '購物車' }
             },
           ],
 
