@@ -58,7 +58,7 @@
                 <div v-if="discountType === 'coupon'" class="mb-3">
                   <select class="form-select" data-testid="coupon-select" aria-label="選擇優惠卷" v-model="couponId" :disabled="!loaded" @change="onSelect">
                     <option value="" disabled>請選擇優惠卷</option>
-                    <option v-for="c in coupons" :key="c.coupon_id" :value="c.coupon_id">{{ c.code }} {{ c.description }}</option>
+                    <option v-for="c in coupons" :key="c.coupon_id" :value="c.coupon_id">{{ c.code }} {{ c.description ?? '' }}</option>
                   </select>
                   <div v-if="coupons.length === 0" class="form-text">目前沒有可用的優惠卷</div>
                 </div>
@@ -68,7 +68,7 @@
                 </div>
                 <div v-if="discountType === 'point'" class="mb-3">
                   <input type="number" class="form-control" data-testid="point-input" aria-label="使用積分" step="5" min="0" v-model.number="usedPoint" :disabled="!loaded" @change="onSelect">
-                  <div class="form-text">可用積分 {{ points }} 點</div>
+                  <div class="form-text">可用積分 {{ Math.max(0, points) }} 點</div>
                 </div>
               </div>
 
@@ -195,6 +195,10 @@ export default {
         if (d?.type === 'coupon' && d.coupon_id) {
           this.discountType = 'coupon';
           this.couponId = d.coupon_id;
+          // 這張券已被本訂單保留，不在可用清單內；補進選項才能讓使用者保留它
+          if (!this.coupons.some((c) => c.coupon_id === d.coupon_id)) {
+            this.coupons = [{ coupon_id: d.coupon_id, code: d.coupon ?? '', description: '' }, ...this.coupons];
+          }
         } else if (d?.type === 'point') {
           this.discountType = 'point';
           this.usedPoint = d.used_point ?? 0;
@@ -232,7 +236,7 @@ export default {
       const mySeq = ++this.seq;
       try {
         let data;
-        const coupon = this.coupons.find((c) => c.coupon_id === this.couponId);
+        const coupon = this.selectedCoupon();
         if (this.discountType === 'none' || (this.discountType === 'coupon' && !coupon)) {
           // 沒有選用折扣（或沒有可選的優惠卷）：取消保留，金額回到未折扣
           data = await cancel_discount(this.orderId);
@@ -246,8 +250,13 @@ export default {
         // 錯誤提示已由 api 層顯示，金額維持原狀
       }
     },
+    // 畫面金額（runTrial）與送出內容（discountBody）共用的單一判斷：目前選中的優惠卷（必須在選項清單內）
+    selectedCoupon() {
+      return this.coupons.find((c) => c.coupon_id === this.couponId);
+    },
     discountBody() {
-      if (this.discountType === 'coupon' && this.couponId) return { type: 'coupon', coupon_id: this.couponId };
+      const coupon = this.selectedCoupon();
+      if (this.discountType === 'coupon' && coupon) return { type: 'coupon', coupon_id: coupon.coupon_id };
       if (this.discountType === 'point') return { type: 'point', used_point: Number(this.usedPoint) || 0 };
       return null; // 不使用折扣時不帶 discount（後端只接受 coupon／point）
     },

@@ -44,7 +44,7 @@ const router = createRouter({
           meta: { title: '行程詳情' }
         },
 
-        //產品細項頁面(假資料)
+        // 結帳填寫付款資料頁
         {
           path: 'pay',
           name: 'pay',
