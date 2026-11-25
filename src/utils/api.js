@@ -12,6 +12,11 @@ const apiUrl_userprofile = `${baseUrl}/api/${version}/user/userinfo`;
 const apiUrl_product = `${baseUrl}/api/${version}/user/product/search`;
 const apiUrl_home = `${baseUrl}/api/${version}/user/home/search`;
 
+const apiUrl_cart = `${baseUrl}/api/${version}/user/trade/cart`;
+const apiUrl_discounts = `${baseUrl}/api/${version}/user/trade/discounts`;
+const apiUrl_checkout = `${baseUrl}/api/${version}/user/checkout`;
+const apiUrl_newebpay = `${baseUrl}/api/${version}/user/newebpay`;
+
 // 401 統一處理：凡是「有帶 Authorization」的請求回 401，一律登出、標記 sessionExpired、
 // 顯示「登入已過期」。排除 /login/status、/login/email、/login/google：
 // router.beforeEach 在 login / register / forgotpw / resetpw 頁會帶（可能已過期的）token 打
@@ -29,7 +34,11 @@ function isMemberApi(config) {
   return (
     url.startsWith(apiUrl_userprofile) ||
     url.startsWith(`${apiUrl}/resetprofilepw`) ||
-    (url.startsWith(apiUrl_product) && config?.method === 'post')
+    (url.startsWith(apiUrl_product) && config?.method === 'post') ||
+    url.startsWith(apiUrl_cart) ||
+    url.startsWith(apiUrl_discounts) ||
+    url.startsWith(apiUrl_checkout) ||
+    url.startsWith(apiUrl_newebpay)
   );
 }
 
@@ -179,6 +188,135 @@ export async function get_tour_list(query) {
   }
   const res = await withOptionalAuth((headers) => axios.get(apiUrl_product, { headers, params }));
   return res.data.data ?? [];
+}
+
+// ---------- P4 交易：購物車、結帳、付款 ----------
+
+function authHeaders() {
+  return { Authorization: `Bearer ${localStorage.getItem('authToken')}` };
+}
+
+// 錯誤處理同 postTourWrite：401（sessionExpired）直接 rethrow；其他顯示後端 message 的錯誤框再 rethrow
+async function tradeRequest(request) {
+  try {
+    return await request();
+  } catch (error) {
+    if (error?.sessionExpired) throw error;
+    let data = error.response?.data;
+    // responseType: 'text' 的請求，錯誤回應 body 是字串；嘗試解析成 JSON 才讀得到 status／message
+    if (typeof data === 'string') {
+      try {
+        data = JSON.parse(data);
+      } catch (parseError) {
+        data = null;
+      }
+    }
+    Swal.fire({
+      icon: 'error',
+      title: data?.status || '網路錯誤',
+      text: data?.message || '無法連線到伺服器，請檢查網路後再試一次。',
+      scrollbarPadding: false,
+    });
+    throw error;
+  }
+}
+
+// [POST] 加入購物車
+export async function post_cart_item(tourId, { type, item, people, options }) {
+  await tradeRequest(() =>
+    axios.post(`${apiUrl_cart}/${encodeURIComponent(tourId)}`, { type, item, people, options }, { headers: authHeaders() })
+  );
+}
+
+// [PATCH] 修改購物車項目
+export async function patch_cart_item(cartItemId, { type, item, people, options }) {
+  await tradeRequest(() =>
+    axios.patch(`${apiUrl_cart}/${encodeURIComponent(cartItemId)}`, { type, item, people, options }, { headers: authHeaders() })
+  );
+}
+
+// [DELETE] 移除購物車項目
+export async function delete_cart_item(cartItemId) {
+  await tradeRequest(() =>
+    axios.delete(`${apiUrl_cart}/${encodeURIComponent(cartItemId)}`, { headers: authHeaders() })
+  );
+}
+
+// [GET] 購物車清單：沒有資料時回應沒有 data 鍵。後端 limit 沒有上限，預設 50 足以涵蓋一般購物車
+export async function get_cart_list({ page = 1, limit = 50 } = {}) {
+  const res = await tradeRequest(() =>
+    axios.get(`${apiUrl_cart}/list`, { headers: authHeaders(), params: { page, limit, lang: 'zh-TW' } })
+  );
+  return res.data.data ?? { data: [], summary: { total_items: 0, total_price: 0 } };
+}
+
+// [POST] 以購物車建立訂單
+export async function post_order(cartId) {
+  const res = await tradeRequest(() =>
+    axios.post(`${apiUrl_checkout}/order/${encodeURIComponent(cartId)}`, {}, { headers: authHeaders() })
+  );
+  return res.data.data;
+}
+
+// [GET] 結帳頁會員資料
+export async function get_checkout_userinfo(orderId) {
+  const res = await tradeRequest(() =>
+    axios.get(`${apiUrl_checkout}/userinfo/${encodeURIComponent(orderId)}`, { headers: authHeaders() })
+  );
+  return res.data.data;
+}
+
+// [PATCH] 結帳預覽（寫入聯絡資料、付款方式、折扣）
+export async function patch_checkout_preview(orderId, body) {
+  const res = await tradeRequest(() =>
+    axios.patch(`${apiUrl_checkout}/preview/${encodeURIComponent(orderId)}`, body, { headers: authHeaders() })
+  );
+  return res.data.data;
+}
+
+// [GET] 結帳摘要
+export async function get_checkout_summary(orderId) {
+  const res = await tradeRequest(() =>
+    axios.get(`${apiUrl_checkout}/summary/${encodeURIComponent(orderId)}`, { headers: authHeaders() })
+  );
+  return res.data.data;
+}
+
+// [POST] 試算優惠券或點數折抵
+export async function post_discount_trial(orderId, { type, discount }) {
+  const res = await tradeRequest(() =>
+    axios.post(`${apiUrl_discounts}/${encodeURIComponent(orderId)}`, { type, discount }, { headers: authHeaders() })
+  );
+  return res.data.data;
+}
+
+// [GET] 取消優惠券、點數折抵（後端編號 33 為 GET）
+export async function cancel_discount(orderId) {
+  const res = await tradeRequest(() =>
+    axios.get(`${apiUrl_discounts}/${encodeURIComponent(orderId)}`, { headers: authHeaders() })
+  );
+  return res.data.data;
+}
+
+// [GET] 會員點數與優惠券
+export async function get_points_coupons() {
+  const res = await tradeRequest(() =>
+    axios.get(`${apiUrl_userprofile}/pointslevel`, { headers: authHeaders() })
+  );
+  const row = res.data.data?.[0];
+  if (!row) return { points: 0, coupons: [] };
+  return {
+    points: Number(row.travel_point) || 0,
+    coupons: (row.coupon ?? []).filter((c) => c && c.coupon_id),
+  };
+}
+
+// [POST] 建立付款：回傳要送往藍新的自動送出 HTML 字串
+export async function post_payment(orderId) {
+  const res = await tradeRequest(() =>
+    axios.post(`${apiUrl_newebpay}/payment`, { order_id: orderId }, { headers: authHeaders(), responseType: 'text' })
+  );
+  return res.data;
 }
 
 // [POST] 編號 01 : 使用者註冊、個人偏好設定
