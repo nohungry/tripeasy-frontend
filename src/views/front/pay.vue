@@ -48,30 +48,31 @@
               <div class="mt-4">
                 <label class="form-label d-block">使用折扣優惠</label>
                 <div class="form-check">
-                  <input class="form-check-input" type="radio" name="discountType" id="discount-none" value="none" v-model="discountType" @change="onTypeChange">
+                  <input class="form-check-input" type="radio" name="discountType" id="discount-none" value="none" v-model="discountType" :disabled="!loaded" @change="onTypeChange">
                   <label class="form-check-label" for="discount-none">不使用</label>
                 </div>
                 <div class="form-check">
-                  <input class="form-check-input" type="radio" name="discountType" id="coupon" value="coupon" v-model="discountType" @change="onTypeChange">
+                  <input class="form-check-input" type="radio" name="discountType" id="coupon" value="coupon" v-model="discountType" :disabled="!loaded" @change="onTypeChange">
                   <label class="form-check-label" for="coupon">優惠卷</label>
                 </div>
                 <div v-if="discountType === 'coupon'" class="mb-3">
-                  <select class="form-select" data-testid="coupon-select" aria-label="選擇優惠卷" v-model="couponId" @change="onSelect">
+                  <select class="form-select" data-testid="coupon-select" aria-label="選擇優惠卷" v-model="couponId" :disabled="!loaded" @change="onSelect">
                     <option value="" disabled>請選擇優惠卷</option>
                     <option v-for="c in coupons" :key="c.coupon_id" :value="c.coupon_id">{{ c.code }} {{ c.description }}</option>
                   </select>
                   <div v-if="coupons.length === 0" class="form-text">目前沒有可用的優惠卷</div>
                 </div>
                 <div class="form-check">
-                  <input class="form-check-input" type="radio" name="discountType" id="point" value="point" v-model="discountType" @change="onTypeChange">
+                  <input class="form-check-input" type="radio" name="discountType" id="point" value="point" v-model="discountType" :disabled="!loaded" @change="onTypeChange">
                   <label class="form-check-label" for="point">旅遊積分</label>
                 </div>
                 <div v-if="discountType === 'point'" class="mb-3">
-                  <input type="number" class="form-control" data-testid="point-input" aria-label="使用積分" step="5" min="0" v-model.number="usedPoint" @change="onSelect">
+                  <input type="number" class="form-control" data-testid="point-input" aria-label="使用積分" step="5" min="0" v-model.number="usedPoint" :disabled="!loaded" @change="onSelect">
                   <div class="form-text">可用積分 {{ points }} 點</div>
                 </div>
               </div>
 
+              <p v-if="loadError" class="text-danger mt-3 mb-0">資料載入失敗，請重新整理頁面</p>
               <button type="submit" class="btn btn-dark mt-4 w-100" :disabled="busy || !loaded">
                 確認並前往付款
               </button>
@@ -161,6 +162,7 @@ export default {
       orders: [],
       sum: { total_price: 0, promo_subtotal: 0, discount_amount: 0, payable: 0 },
       busy: false,
+      loadError: false,
       loaded: false, // 初始載入（預填資料、金額）完成前不可送出
       seq: 0, // 金額請求序號，只採用最新一次的回應
       pendingTrial: null,
@@ -186,19 +188,22 @@ export default {
       this.points = pc.points;
       this.coupons = pc.coupons;
       this.orders = summary.orders ?? [];
-      if (mySeq === this.seq) this.sum = summary.summary;
-      // 重新付款時，訂單可能已保留折扣，讓畫面與保留一致
-      const d = summary.discount;
-      if (d?.type === 'coupon' && d.coupon_id) {
-        this.discountType = 'coupon';
-        this.couponId = d.coupon_id;
-      } else if (d?.type === 'point') {
-        this.discountType = 'point';
-        this.usedPoint = d.used_point ?? 0;
+      if (mySeq === this.seq) {
+        this.sum = summary.summary;
+        // 重新付款時，訂單可能已保留折扣，讓畫面與保留一致（與金額同一個最新者優先檢查）
+        const d = summary.discount;
+        if (d?.type === 'coupon' && d.coupon_id) {
+          this.discountType = 'coupon';
+          this.couponId = d.coupon_id;
+        } else if (d?.type === 'point') {
+          this.discountType = 'point';
+          this.usedPoint = d.used_point ?? 0;
+        }
       }
       this.loaded = true;
     } catch (error) {
-      // 錯誤提示已由 api 層顯示；載入失敗時維持不可送出
+      // 錯誤提示已由 api 層顯示；載入失敗時維持不可送出並顯示提示
+      this.loadError = true;
     }
   },
   methods: {
