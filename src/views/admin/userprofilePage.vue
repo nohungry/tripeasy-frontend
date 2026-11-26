@@ -47,41 +47,76 @@
 
             <!-- 會員等級 -->
             <section v-if="currentTab === '會員等級'" class="level-panel">
-              <div class="level-card">
-                <img v-if="level.badge_url" :src="level.badge_url" alt="等級徽章" class="level-badge" />
-                <div>
-                  <div class="level-name">目前等級 {{ level.level_name }}</div>
-                  <div>購物回饋比例 {{ REWARD_RATE_TEXT }}</div>
-                  <div>點數餘額 {{ level.travel_point }} 點</div>
-                  <div class="level-note">升級規則尚未開放</div>
+              <template v-if="levelLoaded">
+                <div class="level-card">
+                  <img
+                    v-if="level.badge_url"
+                    :src="level.badge_url"
+                    alt="等級徽章"
+                    class="level-badge"
+                  />
+                  <div>
+                    <div class="level-name">目前等級 {{ level.level_name }}</div>
+                    <div>購物回饋比例 {{ REWARD_RATE_TEXT }}</div>
+                    <div>點數餘額 {{ level.travel_point }} 點</div>
+                    <div class="level-note">升級規則尚未開放</div>
+                  </div>
                 </div>
-              </div>
 
-              <div class="level-subtitle">優惠券</div>
-              <div v-if="levelLoaded && level.coupons.length === 0" class="orders-empty">目前沒有可用的優惠券</div>
-              <ul v-else class="coupon-list">
-                <li v-for="coupon in level.coupons" :key="coupon.coupon_id">
-                  <span class="coupon-code">{{ coupon.code }}</span>
-                  <span>{{ coupon.description }}</span>
-                  <span class="order-time">期限 {{ formatTime(coupon.expire_date) }}</span>
-                </li>
-              </ul>
+                <div class="level-subtitle">優惠券</div>
+                <div v-if="level.coupons.length === 0" class="orders-empty">
+                  目前沒有可用的優惠券
+                </div>
+                <ul v-else class="coupon-list">
+                  <li v-for="coupon in level.coupons" :key="coupon.coupon_id">
+                    <span class="coupon-code">{{ coupon.code }}</span>
+                    <span>{{ coupon.description }}</span>
+                    <span class="order-time"
+                      >期限 {{ formatTime(coupon.expire_date) }}</span
+                    >
+                  </li>
+                </ul>
+              </template>
 
               <div class="level-subtitle">點數紀錄</div>
-              <div class="level-note">點數紀錄為明細，加總不一定等於目前餘額（初始點數沒有對應紀錄）</div>
-              <div v-if="pointsLoaded && pointRecords.length === 0" class="orders-empty">目前沒有點數紀錄</div>
-              <div v-for="(record, index) in pointRecords" :key="index" class="point-row" data-testid="point-record">
+              <div class="level-note">
+                點數紀錄為明細，加總不一定等於目前餘額（初始點數沒有對應紀錄）
+              </div>
+              <div
+                v-if="pointsLoaded && pointRecords.length === 0"
+                class="orders-empty"
+              >
+                目前沒有點數紀錄
+              </div>
+              <div
+                v-for="(record, index) in pointRecords"
+                :key="index"
+                class="point-row"
+                data-testid="point-record"
+              >
                 <span class="order-time">{{ formatTime(record.created_at) }}</span>
                 <span>{{ record.reason }}</span>
                 <span class="point-amount">{{ formatSigned(record.point) }}</span>
-                <span class="order-no">{{ record.order_id ? record.order_id.slice(0, 8) : '' }}</span>
+                <span class="order-no">{{
+                  record.order_id ? record.order_id.slice(0, 8) : ''
+                }}</span>
               </div>
               <div v-if="pointsTotalPages > 1" class="orders-pager">
-                <button type="button" class="btn btn-outline-secondary btn-sm" :disabled="pointsPage <= 1" @click="fetchPointRecords(pointsPage - 1)">
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary btn-sm"
+                  :disabled="pointsPage <= 1"
+                  @click="fetchPointRecords(pointsPage - 1)"
+                >
                   上一頁
                 </button>
                 <span>{{ pointsPage }} / {{ pointsTotalPages }}</span>
-                <button type="button" class="btn btn-outline-secondary btn-sm" :disabled="pointsPage >= pointsTotalPages" @click="fetchPointRecords(pointsPage + 1)">
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary btn-sm"
+                  :disabled="pointsPage >= pointsTotalPages"
+                  @click="fetchPointRecords(pointsPage + 1)"
+                >
                   下一頁
                 </button>
               </div>
