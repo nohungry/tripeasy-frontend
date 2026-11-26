@@ -16,27 +16,21 @@ export function updateOptions(selects) {
   });
 }
 
+// 姓名規則（同後端 utils/nameRule.js）：去頭尾空白後 2 到 20 個字（以 Unicode 字元計），不得含控制字元
+export function nameError(value) {
+  const trimmed = String(value ?? '').trim();
+  if (trimmed === '') return '「姓名」不得為空白';
+  if (/\p{Cc}/u.test(trimmed)) return '「姓名」不得包含控制字元';
+  const len = [...trimmed].length;
+  if (len < 2 || len > 20) return '「姓名」需為 2 到 20 個字';
+  return null;
+}
+
 export function validateName(nameTxt, errorTxt) {
-  const trimmed = nameTxt.value.trim();
-
-  if (trimmed === '') {
+  const message = nameError(nameTxt.value);
+  if (message) {
     errorTxt.classList.add('visibility');
-    errorTxt.textContent = '「姓名」欄位不可為空';
-    nameTxt.focus();
-    return true;
-  }
-
-  const validRegex = /^[\u4e00-\u9fa5a-zA-Z0-9]+$/;
-  if (!validRegex.test(trimmed)) {
-    errorTxt.classList.add('visibility');
-    errorTxt.textContent = '「姓名」只能包含中英文，不能有數字或特殊符號';
-    nameTxt.focus();
-    return true;
-  }
-
-  if (trimmed.length < 2 || trimmed.length > 5) {
-    errorTxt.classList.add('visibility');
-    errorTxt.textContent = '「姓名」必須是 2 到 5 個字（中英文混合）';
+    errorTxt.textContent = message;
     nameTxt.focus();
     return true;
   }

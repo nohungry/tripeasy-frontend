@@ -147,6 +147,9 @@ import {
   post_payment,
 } from '@/utils/api.js';
 
+import Swal from 'sweetalert2';
+import { nameError } from '@/utils/function.js';
+
 export default {
   name: 'payPage',
   components: { HeaderComponent, FooterComponent },
@@ -262,6 +265,11 @@ export default {
     },
     async submit() {
       if (this.busy || !this.loaded) return;
+      const nameMessage = nameError(this.form.name);
+      if (nameMessage) {
+        Swal.fire({ icon: 'error', text: nameMessage, scrollbarPadding: false });
+        return;
+      }
       this.busy = true;
       try {
         if (this.pendingTrial) await this.pendingTrial; // 等進行中的折扣試算完成再送出

@@ -279,6 +279,11 @@ export default {
     },
 
     async updateUserInfo() {
+      const nameMessage = func.nameError(this.user.name);
+      if (nameMessage) {
+        Swal.fire({ icon: 'error', text: nameMessage, scrollbarPadding: false });
+        return;
+      }
       const payload = {
         name: this.user.name,
         preference: [this.user.preference1, this.user.preference2, this.user.preference3],
