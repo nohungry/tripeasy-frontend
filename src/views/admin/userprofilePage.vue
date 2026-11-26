@@ -228,10 +228,10 @@
                     <div>地址：{{ detail.shipping.address || '—' }}</div>
                     <div>電話：{{ detail.shipping.phone || '—' }}</div>
                     <div class="detail-title">折扣</div>
-                    <div v-if="detail.money.discount_type !== 'none'">
+                    <div v-if="detail.money.discount_type !== 'none'" data-testid="order-discount">
                       {{ DISCOUNT_LABELS[detail.money.discount_type] ?? detail.money.discount_type }}　-NT${{ formatMoney(detail.money.discount_amount) }}
                     </div>
-                    <div v-else>無</div>
+                    <div v-else data-testid="order-discount">無</div>
                     <div class="detail-title">付款紀錄</div>
                     <div v-if="detail.payments.length === 0">尚無付款紀錄</div>
                     <ul v-else>

@@ -796,8 +796,14 @@ export async function post_favorite(tourId) {
 }
 
 // [DELETE] 取消收藏
+// 404（查無此收藏項目）代表這筆已不存在，等同取消成功，不顯示錯誤框
 export async function delete_favorite(favoriteId) {
   await tradeRequest(() =>
-    axios.delete(`${apiUrl_collection}/info/${encodeURIComponent(favoriteId)}`, { headers: authHeaders() })
+    axios
+      .delete(`${apiUrl_collection}/info/${encodeURIComponent(favoriteId)}`, { headers: authHeaders() })
+      .catch((error) => {
+        if (error?.response?.status === 404) return null;
+        throw error;
+      })
   );
 }
