@@ -65,7 +65,7 @@ async function load() {
     const res = await get_favorites();
     items.value = res.data;
     total.value = res.total;
-  } catch (error) {
+  } catch {
     // 401 已由 api.js 導回登入頁；其他錯誤框由 api.js 顯示
     loadFailed.value = true;
   } finally {
@@ -81,7 +81,7 @@ async function remove(item) {
     await delete_favorite(id);
     items.value = items.value.filter((x) => x.favorite_id !== id);
     total.value = Math.max(0, total.value - 1);
-  } catch (error) {
+  } catch {
     // 錯誤框由 api.js 顯示，卡片維持原樣
   } finally {
     removing.delete(id);

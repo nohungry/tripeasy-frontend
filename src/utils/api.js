@@ -778,7 +778,7 @@ export function post_user_resetProfilePW(Pwd_txt, NewPwd_txt, NewaginPwd_txt, on
 
 // ---------- P5 收藏 ----------
 
-// [GET] 收藏列表：不分頁（伺服器端上限 100 筆、新到舊）；無資料時回應沒有 data 鍵
+// [GET] 收藏列表：不分頁（伺服器端上限 100 筆、新到舊）；空列表也回 { data: [], total: 0 }
 export async function get_favorites() {
   const res = await tradeRequest(() =>
     axios.get(`${apiUrl_collection}/info/all`, { headers: authHeaders(), params: { lang: 'zh-TW' } })

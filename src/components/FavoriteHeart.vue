@@ -58,7 +58,7 @@ async function toggle() {
       currentId.value = favorite_id;
     }
     emit('update:favoriteId', currentId.value);
-  } catch (error) {
+  } catch {
     pressed.value = wasPressed;
     currentId.value = previousId;
   } finally {
@@ -74,8 +74,5 @@ async function toggle() {
   padding: 0;
   cursor: pointer;
   line-height: 0;
-}
-.favorite-heart:disabled {
-  cursor: not-allowed;
 }
 </style>
