@@ -18,6 +18,7 @@ const apiUrl_checkout = `${baseUrl}/api/${version}/user/checkout`;
 const apiUrl_newebpay = `${baseUrl}/api/${version}/user/newebpay`;
 const apiUrl_orders = `${baseUrl}/api/${version}/user/orders`;
 const apiUrl_points = `${baseUrl}/api/${version}/user/points`;
+const apiUrl_automation = `${baseUrl}/api/${version}/user/automation`;
 
 // 401 統一處理：凡是「有帶 Authorization」的請求回 401，一律登出、標記 sessionExpired、
 // 顯示「登入已過期」。排除 /login/status、/login/email、/login/google：
@@ -42,7 +43,8 @@ function isMemberApi(config) {
     url.startsWith(apiUrl_checkout) ||
     url.startsWith(apiUrl_newebpay) ||
     url.startsWith(apiUrl_orders) ||
-    url.startsWith(apiUrl_points)
+    url.startsWith(apiUrl_points) ||
+    url.startsWith(apiUrl_automation)
   );
 }
 
@@ -336,6 +338,43 @@ export async function get_point_records({ page = 1, limit = 10 } = {}) {
     axios.get(`${apiUrl_points}/records`, { headers: authHeaders(), params: { page, limit } })
   );
   return res.data.data ?? { data: [], total: 0 };
+}
+
+// [GET] 通知設定：{ notifi_settings_enabled, price_tracking: { price_tracking_enabled, country, region, max_price } }
+export async function get_notify_settings() {
+  const res = await tradeRequest(() =>
+    axios.get(`${apiUrl_automation}/allnotifi-settings`, { headers: authHeaders() })
+  );
+  return res.data.data;
+}
+
+// [PATCH] 出發前提醒開關
+export async function patch_early_notify(enabled) {
+  await tradeRequest(() =>
+    axios.patch(
+      `${apiUrl_automation}/notifi-settings`,
+      { notifi_settings_enabled: Boolean(enabled) },
+      { headers: authHeaders() }
+    )
+  );
+}
+
+// [PATCH] 價格追蹤：關閉時只送開關，後端會把國家、地區、預算清成 NULL
+export async function patch_price_tracking({ enabled, country, region, maxPrice }) {
+  const body = enabled
+    ? { price_tracking_enabled: true, country, region, max_price: maxPrice }
+    : { price_tracking_enabled: false };
+  await tradeRequest(() =>
+    axios.patch(`${apiUrl_automation}/price-tracking`, body, { headers: authHeaders() })
+  );
+}
+
+// [GET] 價格追蹤可選的國家與地區（上架行程的英文值）：[{ country, regions }]；不使用 /web/filter 的中文表
+export async function get_tracking_regions() {
+  const res = await tradeRequest(() =>
+    axios.get(`${apiUrl_automation}/regions`, { headers: authHeaders() })
+  );
+  return res.data.data ?? [];
 }
 
 // [GET] 我的訂單列表：{ data, total }。呼叫端明確傳 limit（後端預設 4）

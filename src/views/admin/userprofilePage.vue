@@ -42,8 +42,68 @@
           <div class="col-md-9 col-lg-10">
             <div class="title"><i class="bi bi-person-circle me-2"></i>會員中心</div>
 
-            <!-- 尚未開放的分頁 -->
-            <div v-if="currentTab === '個人偏好設定'" class="coming-soon">即將開放</div>
+            <!-- 個人偏好設定（通知設定） -->
+            <section v-if="currentTab === '個人偏好設定'" class="pref-panel">
+              <div class="level-note">目前只儲存設定，尚未寄送通知</div>
+              <template v-if="prefLoaded">
+                <div class="form-check">
+                  <input
+                    id="pref-early"
+                    v-model="pref.early"
+                    type="checkbox"
+                    class="form-check-input"
+                  />
+                  <label for="pref-early" class="form-check-label">出發前提醒</label>
+                </div>
+                <div class="form-check">
+                  <input
+                    id="pref-price"
+                    v-model="pref.priceOn"
+                    type="checkbox"
+                    class="form-check-input"
+                  />
+                  <label for="pref-price" class="form-check-label">價格追蹤</label>
+                </div>
+                <template v-if="pref.priceOn">
+                  <div class="form-group">
+                    <label for="pref-country" class="form-label">國家</label>
+                    <select
+                      id="pref-country"
+                      v-model="pref.country"
+                      class="form-select"
+                      @change="pref.region = ''"
+                    >
+                      <option value="" disabled>請選擇國家</option>
+                      <option v-for="o in countryOptions" :key="o.value" :value="o.value">
+                        {{ o.label }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="pref-region" class="form-label">地區</label>
+                    <select id="pref-region" v-model="pref.region" class="form-select">
+                      <option value="" disabled>請選擇地區</option>
+                      <option v-for="o in regionOptions" :key="o.value" :value="o.value">
+                        {{ o.label }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="pref-max-price" class="form-label">預算上限</label>
+                    <input
+                      id="pref-max-price"
+                      v-model.number="pref.maxPrice"
+                      type="number"
+                      min="0"
+                      class="form-control"
+                    />
+                  </div>
+                </template>
+                <button type="button" class="btn btn-primary" @click="savePreference">
+                  儲存設定
+                </button>
+              </template>
+            </section>
 
             <!-- 會員等級 -->
             <section v-if="currentTab === '會員等級'" class="level-panel">
@@ -333,6 +393,7 @@ function tabLabel(tab) {
   return typeof tab === 'string' && Object.hasOwn(TAB_KEYS, tab) ? TAB_KEYS[tab] : TAB_KEYS.info;
 }
 const DISCOUNT_LABELS = { coupon: '優惠券', point: '點數折抵' };
+const DELISTED_NOTE = '（目前沒有上架行程）';
 const ORDERS_PER_PAGE = 10;
 const POINTS_PER_PAGE = 10;
 // 回饋比例 API 沒有輸出（F10）；與後端 settlePaidOrder 的 floor(payable × 0.1) 一致
@@ -364,6 +425,10 @@ export default {
       pointsLoaded: false,
       openDetailId: null,
       detail: null,
+      pref: { early: false, priceOn: false, country: '', region: '', maxPrice: '' },
+      prefSaved: { country: null, region: null },
+      trackingRegions: [],
+      prefLoaded: false,
       icons: {
         會員資訊: 'bi bi-person-vcard',
         會員等級: 'bi bi-trophy',
@@ -412,6 +477,24 @@ export default {
     currentTab() {
       return tabLabel(this.$route.query.tab);
     },
+    // 已存的值若不在上架清單（行程下架），仍列為選項並標註（R2a）
+    countryOptions() {
+      const options = this.trackingRegions.map((r) => ({ value: r.country, label: r.country }));
+      const saved = this.prefSaved.country;
+      if (saved && !options.some((o) => o.value === saved)) {
+        options.push({ value: saved, label: `${saved}${DELISTED_NOTE}` });
+      }
+      return options;
+    },
+    regionOptions() {
+      const entry = this.trackingRegions.find((r) => r.country === this.pref.country);
+      const options = (entry ? entry.regions : []).map((r) => ({ value: r, label: r }));
+      const { country, region } = this.prefSaved;
+      if (region && country === this.pref.country && !options.some((o) => o.value === region)) {
+        options.push({ value: region, label: `${region}${DELISTED_NOTE}` });
+      }
+      return options;
+    },
     pointsTotalPages() {
       return Math.max(1, Math.ceil(this.pointsTotal / POINTS_PER_PAGE));
     },
@@ -423,12 +506,14 @@ export default {
     currentTab(tab) {
       if (tab === TAB_KEYS.orders) this.fetchOrders(1);
       if (tab === TAB_KEYS.level) this.fetchLevel();
+      if (tab === TAB_KEYS.preference) this.fetchPreference();
     },
   },
   mounted() {
     this.fetchUserInfo();
     if (this.currentTab === TAB_KEYS.orders) this.fetchOrders(1);
     if (this.currentTab === TAB_KEYS.level) this.fetchLevel();
+    if (this.currentTab === TAB_KEYS.preference) this.fetchPreference();
   },
   methods: {
     selectTab(label) {
@@ -436,6 +521,45 @@ export default {
       if (tab && tabLabel(this.$route.query.tab) !== label) {
         this.$router.replace({ query: { tab } });
       }
+    },
+    async fetchPreference() {
+      const seq = (this.prefSeq = (this.prefSeq || 0) + 1);
+      try {
+        const [settings, regions] = await Promise.all([
+          api.get_notify_settings(),
+          api.get_tracking_regions(),
+        ]);
+        if (seq !== this.prefSeq) return;
+        const tracking = settings.price_tracking;
+        this.trackingRegions = regions;
+        this.prefSaved = { country: tracking.country, region: tracking.region };
+        this.pref = {
+          early: settings.notifi_settings_enabled,
+          priceOn: tracking.price_tracking_enabled,
+          country: tracking.country ?? '',
+          region: tracking.region ?? '',
+          maxPrice: tracking.max_price ?? '',
+        };
+        this.prefLoaded = true;
+      } catch (error) {
+        // 錯誤提示已在 api 內顯示
+      }
+    },
+    async savePreference() {
+      try {
+        await api.patch_early_notify(this.pref.early);
+        await api.patch_price_tracking({
+          enabled: this.pref.priceOn,
+          country: this.pref.country || undefined,
+          region: this.pref.region || undefined,
+          maxPrice: this.pref.maxPrice === '' ? undefined : this.pref.maxPrice,
+        });
+      } catch (error) {
+        // 錯誤提示已在 api 內顯示
+        return;
+      }
+      await Swal.fire({ icon: 'success', text: '設定已儲存', scrollbarPadding: false });
+      this.fetchPreference();
     },
     fetchLevel() {
       this.fetchMemberLevel();
@@ -752,16 +876,17 @@ select option:disabled {
   background-color: #f8f9fa !important;
 }
 
-.coming-soon {
+.pref-panel {
   background-color: #fff;
   border-radius: 0.5rem;
-  padding: 3rem 2rem;
+  padding: 2rem;
   margin-bottom: 2rem;
-  text-align: center;
-  color: #6c757d;
   box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
 }
-
+.pref-panel .form-check,
+.pref-panel .form-group {
+  margin-bottom: 1rem;
+}
 /* 訂單分頁 */
 .orders-empty {
   padding: 40px 0;
