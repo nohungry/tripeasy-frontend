@@ -93,8 +93,8 @@
                     <div>地址：{{ detail.shipping.address || '—' }}</div>
                     <div>電話：{{ detail.shipping.phone || '—' }}</div>
                     <div class="detail-title">折扣</div>
-                    <div v-if="detail.money.discount_type">
-                      {{ detail.money.discount_type }}　-NT${{ formatMoney(detail.money.discount_amount) }}
+                    <div v-if="detail.money.discount_type !== 'none'">
+                      {{ DISCOUNT_LABELS[detail.money.discount_type] ?? detail.money.discount_type }}　-NT${{ formatMoney(detail.money.discount_amount) }}
                     </div>
                     <div v-else>無</div>
                     <div class="detail-title">付款紀錄</div>
@@ -253,6 +253,11 @@ import Swal from 'sweetalert2';
 
 // ?tab= 對應的分頁；未知或缺少 → info
 const TAB_KEYS = { info: '會員資訊', level: '會員等級', preference: '個人偏好設定', orders: '個人訂單查看' };
+// Object.hasOwn：避免 ?tab=constructor、toString、__proto__ 取到原型上的成員
+function tabLabel(tab) {
+  return typeof tab === 'string' && Object.hasOwn(TAB_KEYS, tab) ? TAB_KEYS[tab] : TAB_KEYS.info;
+}
+const DISCOUNT_LABELS = { coupon: '優惠券', point: '點數折抵' };
 const ORDERS_PER_PAGE = 10;
 
 export default {
@@ -266,6 +271,7 @@ export default {
         confirm: false,
       },
       TAB_KEYS,
+      DISCOUNT_LABELS,
       tabs: Object.values(TAB_KEYS),
       orders: [],
       ordersTotal: 0,
@@ -319,7 +325,7 @@ export default {
   },
   computed: {
     currentTab() {
-      return TAB_KEYS[this.$route.query.tab] ?? TAB_KEYS.info;
+      return tabLabel(this.$route.query.tab);
     },
     ordersTotalPages() {
       return Math.max(1, Math.ceil(this.ordersTotal / ORDERS_PER_PAGE));
@@ -337,7 +343,7 @@ export default {
   methods: {
     selectTab(label) {
       const tab = Object.keys(TAB_KEYS).find((key) => TAB_KEYS[key] === label);
-      if (tab && TAB_KEYS[this.$route.query.tab] !== label) {
+      if (tab && tabLabel(this.$route.query.tab) !== label) {
         this.$router.replace({ query: { tab } });
       }
     },
@@ -371,7 +377,8 @@ export default {
         const detail = await api.get_order(order.order_id);
         if (this.openDetailId === order.order_id) this.detail = detail;
       } catch (error) {
-        // 錯誤提示已在 api 內顯示
+        // 錯誤提示已在 api 內顯示；還原展開狀態，避免卡在「載入中…」
+        if (this.openDetailId === order.order_id) this.openDetailId = null;
       }
     },
     continuePayment(order) {
