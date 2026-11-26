@@ -161,8 +161,7 @@ const router = createRouter({
             //自動化設定
             {
               path: 'automatic',
-              name: 'automatic',
-              component: () => import('../views/admin/manage/automaticSetting.vue'),
+              redirect: { name: 'userprofile', query: { tab: 'preference' } },
             },
           ],
         },

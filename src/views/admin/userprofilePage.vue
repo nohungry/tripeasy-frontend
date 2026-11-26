@@ -31,7 +31,7 @@
                 :class="{ active: currentTab === tab }"
                 v-for="tab in tabs"
                 :key="tab"
-                @click="currentTab = tab"
+                @click="selectTab(tab)"
               >
                 <i :class="icons[tab] + ' me-2'"></i>{{ tab }}
               </div>
@@ -42,8 +42,217 @@
           <div class="col-md-9 col-lg-10">
             <div class="title"><i class="bi bi-person-circle me-2"></i>會員中心</div>
 
-            <!-- 尚未開放的分頁 -->
-            <div v-if="currentTab !== '會員資訊'" class="coming-soon">即將開放</div>
+            <!-- 個人偏好設定（通知設定） -->
+            <section v-if="currentTab === '個人偏好設定'" class="pref-panel">
+              <div class="level-note">目前只儲存設定，尚未寄送通知</div>
+              <template v-if="prefLoaded">
+                <div class="form-check">
+                  <input
+                    id="pref-early"
+                    v-model="pref.early"
+                    type="checkbox"
+                    class="form-check-input"
+                  />
+                  <label for="pref-early" class="form-check-label">出發前提醒</label>
+                </div>
+                <div class="form-check">
+                  <input
+                    id="pref-price"
+                    v-model="pref.priceOn"
+                    type="checkbox"
+                    class="form-check-input"
+                  />
+                  <label for="pref-price" class="form-check-label">價格追蹤</label>
+                </div>
+                <template v-if="pref.priceOn">
+                  <div class="form-group">
+                    <label for="pref-country" class="form-label">國家</label>
+                    <select
+                      id="pref-country"
+                      v-model="pref.country"
+                      class="form-select"
+                      @change="pref.region = ''"
+                    >
+                      <option value="" disabled>請選擇國家</option>
+                      <option v-for="o in countryOptions" :key="o.value" :value="o.value">
+                        {{ o.label }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="pref-region" class="form-label">地區</label>
+                    <select id="pref-region" v-model="pref.region" class="form-select">
+                      <option value="" disabled>請選擇地區</option>
+                      <option v-for="o in regionOptions" :key="o.value" :value="o.value">
+                        {{ o.label }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="pref-max-price" class="form-label">預算上限</label>
+                    <input
+                      id="pref-max-price"
+                      v-model.number="pref.maxPrice"
+                      type="number"
+                      min="0"
+                      class="form-control"
+                    />
+                  </div>
+                </template>
+                <button type="button" class="btn btn-primary" @click="savePreference">
+                  儲存設定
+                </button>
+              </template>
+            </section>
+
+            <!-- 會員等級 -->
+            <section v-if="currentTab === '會員等級'" class="level-panel">
+              <template v-if="levelLoaded">
+                <div class="level-card">
+                  <img
+                    v-if="level.badge_url"
+                    :src="level.badge_url"
+                    alt="等級徽章"
+                    class="level-badge"
+                  />
+                  <div>
+                    <div class="level-name">目前等級 {{ level.level_name }}</div>
+                    <div>購物回饋比例 {{ REWARD_RATE_TEXT }}</div>
+                    <div>點數餘額 {{ level.travel_point }} 點</div>
+                    <div class="level-note">升級規則尚未開放</div>
+                  </div>
+                </div>
+
+                <div class="level-subtitle">優惠券</div>
+                <div v-if="level.coupons.length === 0" class="orders-empty">
+                  目前沒有可用的優惠券
+                </div>
+                <ul v-else class="coupon-list">
+                  <li v-for="coupon in level.coupons" :key="coupon.coupon_id">
+                    <span class="coupon-code">{{ coupon.code }}</span>
+                    <span>{{ coupon.description }}</span>
+                    <span class="order-time"
+                      >期限 {{ formatTime(coupon.expire_date) }}</span
+                    >
+                  </li>
+                </ul>
+              </template>
+
+              <div class="level-subtitle">點數紀錄</div>
+              <div class="level-note">
+                點數紀錄為明細，加總不一定等於目前餘額（初始點數沒有對應紀錄）
+              </div>
+              <div
+                v-if="pointsLoaded && pointRecords.length === 0"
+                class="orders-empty"
+              >
+                目前沒有點數紀錄
+              </div>
+              <div
+                v-for="(record, index) in pointRecords"
+                :key="index"
+                class="point-row"
+                data-testid="point-record"
+              >
+                <span class="order-time">{{ formatTime(record.created_at) }}</span>
+                <span>{{ record.reason }}</span>
+                <span class="point-amount">{{ formatSigned(record.point) }}</span>
+                <span class="order-no">{{
+                  record.order_id ? record.order_id.slice(0, 8) : ''
+                }}</span>
+              </div>
+              <div v-if="pointsTotalPages > 1" class="orders-pager">
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary btn-sm"
+                  :disabled="pointsPage <= 1"
+                  @click="fetchPointRecords(pointsPage - 1)"
+                >
+                  上一頁
+                </button>
+                <span>{{ pointsPage }} / {{ pointsTotalPages }}</span>
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary btn-sm"
+                  :disabled="pointsPage >= pointsTotalPages"
+                  @click="fetchPointRecords(pointsPage + 1)"
+                >
+                  下一頁
+                </button>
+              </div>
+            </section>
+
+            <!-- 個人訂單查看 -->
+            <section v-if="currentTab === '個人訂單查看'" class="orders-panel">
+              <div v-if="ordersLoaded && orders.length === 0" class="orders-empty">目前沒有訂單</div>
+              <div v-for="order in orders" :key="order.order_id" class="order-row" data-testid="order-row">
+                <div class="order-summary">
+                  <div class="order-main">
+                    <span class="order-no">{{ order.order_id.slice(0, 8) }}</span>
+                    <span class="order-time">{{ formatTime(order.created_at) }}</span>
+                  </div>
+                  <div class="order-title">
+                    {{ order.first_item ? order.first_item.title : '（行程已移除）' }}
+                    <span class="order-count">{{ order.item_count }} 項</span>
+                  </div>
+                  <div class="order-side">
+                    <span class="order-status">{{ orderStatusText(order) }}</span>
+                    <span class="order-payable">NT${{ formatMoney(order.payable) }}</span>
+                  </div>
+                </div>
+                <div v-if="order.deadline && (order.can_continue_payment || order.is_overdue)" class="order-deadline">
+                  付款期限 {{ formatTime(order.deadline) }}
+                </div>
+                <div class="order-actions">
+                  <button type="button" class="btn btn-outline-secondary btn-sm" @click="toggleDetail(order)">
+                    明細
+                  </button>
+                  <button
+                    v-if="order.can_continue_payment"
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    @click="continuePayment(order)"
+                  >
+                    繼續付款
+                  </button>
+                </div>
+                <div v-if="openDetailId === order.order_id" class="order-detail" data-testid="order-detail">
+                  <template v-if="detail">
+                    <div class="detail-title">品項</div>
+                    <ul>
+                      <li v-for="item in detail.items" :key="item.order_item_id">
+                        {{ item.title }} × {{ item.quantity }}　NT${{ formatMoney(item.total_price) }}
+                      </li>
+                    </ul>
+                    <div class="detail-title">收件資料</div>
+                    <div>地址：{{ detail.shipping.address || '—' }}</div>
+                    <div>電話：{{ detail.shipping.phone || '—' }}</div>
+                    <div class="detail-title">折扣</div>
+                    <div v-if="detail.money.discount_type !== 'none'" data-testid="order-discount">
+                      {{ DISCOUNT_LABELS[detail.money.discount_type] ?? detail.money.discount_type }}　-NT${{ formatMoney(detail.money.discount_amount) }}
+                    </div>
+                    <div v-else data-testid="order-discount">無</div>
+                    <div class="detail-title">付款紀錄</div>
+                    <div v-if="detail.payments.length === 0">尚無付款紀錄</div>
+                    <ul v-else>
+                      <li v-for="(p, idx) in detail.payments" :key="idx">
+                        {{ formatTime(p.created_at) }}　{{ p.result }}
+                      </li>
+                    </ul>
+                  </template>
+                  <div v-else>載入中…</div>
+                </div>
+              </div>
+              <div v-if="ordersTotalPages > 1" class="orders-pager">
+                <button type="button" class="btn btn-outline-secondary btn-sm" :disabled="ordersPage <= 1" @click="changeOrdersPage(ordersPage - 1)">
+                  上一頁
+                </button>
+                <span>{{ ordersPage }} / {{ ordersTotalPages }}</span>
+                <button type="button" class="btn btn-outline-secondary btn-sm" :disabled="ordersPage >= ordersTotalPages" @click="changeOrdersPage(ordersPage + 1)">
+                  下一頁
+                </button>
+              </div>
+            </section>
 
             <!-- 會員資訊表單 -->
             <form v-if="currentTab === '會員資訊'" id="userinfo" @submit.prevent>
@@ -177,6 +386,19 @@ import * as func from '@/utils/function.js';
 import * as api from '@/utils/api.js';
 import Swal from 'sweetalert2';
 
+// ?tab= 對應的分頁；未知或缺少 → info
+const TAB_KEYS = { info: '會員資訊', level: '會員等級', preference: '個人偏好設定', orders: '個人訂單查看' };
+// Object.hasOwn：避免 ?tab=constructor、toString、__proto__ 取到原型上的成員
+function tabLabel(tab) {
+  return typeof tab === 'string' && Object.hasOwn(TAB_KEYS, tab) ? TAB_KEYS[tab] : TAB_KEYS.info;
+}
+const DISCOUNT_LABELS = { coupon: '優惠券', point: '點數折抵' };
+const DELISTED_NOTE = '（目前沒有上架行程）';
+const ORDERS_PER_PAGE = 10;
+const POINTS_PER_PAGE = 10;
+// 回饋比例 API 沒有輸出（F10）；與後端 settlePaidOrder 的 floor(payable × 0.1) 一致
+const REWARD_RATE_TEXT = '10%';
+
 export default {
   name: 'userprofilePage',
   components: { HeaderComponent, FooterComponent },
@@ -187,8 +409,26 @@ export default {
         new: false,
         confirm: false,
       },
-      currentTab: '會員資訊',
-      tabs: ['會員資訊', '會員等級', '個人偏好設定', '個人訂單查看'],
+      TAB_KEYS,
+      DISCOUNT_LABELS,
+      REWARD_RATE_TEXT,
+      tabs: Object.values(TAB_KEYS),
+      orders: [],
+      ordersTotal: 0,
+      ordersPage: 1,
+      ordersLoaded: false,
+      level: { level_name: '', badge_url: '', travel_point: 0, coupons: [] },
+      levelLoaded: false,
+      pointRecords: [],
+      pointsTotal: 0,
+      pointsPage: 1,
+      pointsLoaded: false,
+      openDetailId: null,
+      detail: null,
+      pref: { early: false, priceOn: false, country: '', region: '', maxPrice: '' },
+      prefSaved: { country: null, region: null },
+      trackingRegions: [],
+      prefLoaded: false,
       icons: {
         會員資訊: 'bi bi-person-vcard',
         會員等級: 'bi bi-trophy',
@@ -233,10 +473,173 @@ export default {
       },
     };
   },
+  computed: {
+    currentTab() {
+      return tabLabel(this.$route.query.tab);
+    },
+    // 已存的值若不在上架清單（行程下架），仍列為選項並標註（R2a）
+    countryOptions() {
+      const options = this.trackingRegions.map((r) => ({ value: r.country, label: r.country }));
+      const saved = this.prefSaved.country;
+      if (saved && !options.some((o) => o.value === saved)) {
+        options.push({ value: saved, label: `${saved}${DELISTED_NOTE}` });
+      }
+      return options;
+    },
+    regionOptions() {
+      const entry = this.trackingRegions.find((r) => r.country === this.pref.country);
+      const options = (entry ? entry.regions : []).map((r) => ({ value: r, label: r }));
+      const { country, region } = this.prefSaved;
+      if (region && country === this.pref.country && !options.some((o) => o.value === region)) {
+        options.push({ value: region, label: `${region}${DELISTED_NOTE}` });
+      }
+      return options;
+    },
+    pointsTotalPages() {
+      return Math.max(1, Math.ceil(this.pointsTotal / POINTS_PER_PAGE));
+    },
+    ordersTotalPages() {
+      return Math.max(1, Math.ceil(this.ordersTotal / ORDERS_PER_PAGE));
+    },
+  },
+  watch: {
+    currentTab(tab) {
+      if (tab === TAB_KEYS.orders) this.fetchOrders(1);
+      if (tab === TAB_KEYS.level) this.fetchLevel();
+      if (tab === TAB_KEYS.preference) this.fetchPreference();
+    },
+  },
   mounted() {
     this.fetchUserInfo();
+    if (this.currentTab === TAB_KEYS.orders) this.fetchOrders(1);
+    if (this.currentTab === TAB_KEYS.level) this.fetchLevel();
+    if (this.currentTab === TAB_KEYS.preference) this.fetchPreference();
   },
   methods: {
+    selectTab(label) {
+      const tab = Object.keys(TAB_KEYS).find((key) => TAB_KEYS[key] === label);
+      if (tab && tabLabel(this.$route.query.tab) !== label) {
+        this.$router.replace({ query: { tab } });
+      }
+    },
+    async fetchPreference() {
+      const seq = (this.prefSeq = (this.prefSeq || 0) + 1);
+      try {
+        const [settings, regions] = await Promise.all([
+          api.get_notify_settings(),
+          api.get_tracking_regions(),
+        ]);
+        if (seq !== this.prefSeq) return;
+        const tracking = settings.price_tracking;
+        this.trackingRegions = regions;
+        this.prefSaved = { country: tracking.country, region: tracking.region };
+        this.pref = {
+          early: settings.notifi_settings_enabled,
+          priceOn: tracking.price_tracking_enabled,
+          country: tracking.country ?? '',
+          region: tracking.region ?? '',
+          maxPrice: tracking.max_price ?? '',
+        };
+        this.prefLoaded = true;
+      } catch (error) {
+        // 錯誤提示已在 api 內顯示
+      }
+    },
+    async savePreference() {
+      try {
+        await api.patch_early_notify(this.pref.early);
+        await api.patch_price_tracking({
+          enabled: this.pref.priceOn,
+          country: this.pref.country || undefined,
+          region: this.pref.region || undefined,
+          maxPrice: this.pref.maxPrice === '' ? undefined : this.pref.maxPrice,
+        });
+      } catch (error) {
+        // 錯誤提示已在 api 內顯示
+        return;
+      }
+      await Swal.fire({ icon: 'success', text: '設定已儲存', scrollbarPadding: false });
+      this.fetchPreference();
+    },
+    fetchLevel() {
+      this.fetchMemberLevel();
+      this.fetchPointRecords(1);
+    },
+    async fetchMemberLevel() {
+      const seq = (this.levelSeq = (this.levelSeq || 0) + 1);
+      try {
+        const level = await api.get_member_level();
+        if (seq !== this.levelSeq) return;
+        this.level = level;
+        this.levelLoaded = true;
+      } catch (error) {
+        // 錯誤提示已在 api 內顯示
+      }
+    },
+    async fetchPointRecords(page) {
+      const seq = (this.pointsSeq = (this.pointsSeq || 0) + 1);
+      try {
+        const res = await api.get_point_records({ page, limit: POINTS_PER_PAGE });
+        if (seq !== this.pointsSeq) return;
+        this.pointRecords = res.data;
+        this.pointsTotal = res.total;
+        this.pointsPage = page;
+        this.pointsLoaded = true;
+      } catch (error) {
+        // 錯誤提示已在 api 內顯示
+      }
+    },
+    formatSigned(value) {
+      const n = Number(value);
+      return n > 0 ? `+${n}` : String(n);
+    },
+    async fetchOrders(page) {
+      const seq = (this.ordersSeq = (this.ordersSeq || 0) + 1);
+      this.openDetailId = null;
+      this.detail = null;
+      try {
+        const res = await api.get_orders({ page, limit: ORDERS_PER_PAGE });
+        if (seq !== this.ordersSeq) return;
+        this.orders = res.data;
+        this.ordersTotal = res.total;
+        this.ordersPage = page;
+        this.ordersLoaded = true;
+      } catch (error) {
+        // 錯誤提示已在 api 內顯示
+      }
+    },
+    changeOrdersPage(page) {
+      this.fetchOrders(page);
+    },
+    async toggleDetail(order) {
+      if (this.openDetailId === order.order_id) {
+        this.openDetailId = null;
+        this.detail = null;
+        return;
+      }
+      this.openDetailId = order.order_id;
+      this.detail = null;
+      try {
+        const detail = await api.get_order(order.order_id);
+        if (this.openDetailId === order.order_id) this.detail = detail;
+      } catch (error) {
+        // 錯誤提示已在 api 內顯示；還原展開狀態，避免卡在「載入中…」
+        if (this.openDetailId === order.order_id) this.openDetailId = null;
+      }
+    },
+    continuePayment(order) {
+      this.$router.push({ name: 'pay', query: { order: order.order_id } });
+    },
+    // 前端不比對時間（F1）：只讀後端的 is_overdue
+    orderStatusText(order) {
+      return order.is_overdue ? '已逾時' : order.status_label;
+    },
+    formatTime(value) {
+      return value ? new Date(value).toLocaleString('zh-TW', { hour12: false }) : '';
+    },
+    formatMoney(value) {
+      return Number(value).toLocaleString('en-US');
+    },
     togglePassword(key) {
       this.passwordVisible[key] = !this.passwordVisible[key];
     },
@@ -279,6 +682,11 @@ export default {
     },
 
     async updateUserInfo() {
+      const nameMessage = func.nameError(this.user.name);
+      if (nameMessage) {
+        Swal.fire({ icon: 'error', text: nameMessage, scrollbarPadding: false });
+        return;
+      }
       const payload = {
         name: this.user.name,
         preference: [this.user.preference1, this.user.preference2, this.user.preference3],
@@ -288,7 +696,6 @@ export default {
     },
 
     async updateUserPassword() {
-      console.log(this.password.current);
 
       await api.post_user_resetProfilePW(
         this.password.current,
@@ -469,16 +876,116 @@ select option:disabled {
   background-color: #f8f9fa !important;
 }
 
-.coming-soon {
+.pref-panel {
   background-color: #fff;
   border-radius: 0.5rem;
-  padding: 3rem 2rem;
+  padding: 2rem;
   margin-bottom: 2rem;
-  text-align: center;
-  color: #6c757d;
   box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
 }
-
+.pref-panel .form-check,
+.pref-panel .form-group {
+  margin-bottom: 1rem;
+}
+/* 訂單分頁 */
+.orders-empty {
+  padding: 40px 0;
+  text-align: center;
+  color: #888;
+}
+.order-row {
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+.order-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.order-no {
+  font-weight: bold;
+  margin-right: 8px;
+}
+.order-time,
+.order-count,
+.order-deadline {
+  color: #888;
+  font-size: 0.9em;
+}
+.order-count {
+  margin-left: 8px;
+}
+.order-side {
+  display: flex;
+  gap: 12px;
+}
+.order-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+}
+.order-detail {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #eee;
+}
+.detail-title {
+  font-weight: bold;
+  margin-top: 8px;
+}
+.level-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.level-badge {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+.level-name {
+  font-weight: 600;
+}
+.level-subtitle {
+  font-weight: 600;
+  margin: 16px 0 8px;
+}
+.level-note {
+  color: #888;
+  font-size: 0.9rem;
+}
+.coupon-list {
+  list-style: none;
+  padding: 0;
+}
+.coupon-list li,
+.point-row {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  background: #fff;
+  border-radius: 8px;
+  padding: 10px 16px;
+  margin-bottom: 8px;
+}
+.coupon-code,
+.point-amount {
+  font-weight: 600;
+}
+.orders-pager {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+}
 /* 編輯圖標 */
 .edit-icon {
   position: absolute;
