@@ -16,6 +16,7 @@ const apiUrl_cart = `${baseUrl}/api/${version}/user/trade/cart`;
 const apiUrl_discounts = `${baseUrl}/api/${version}/user/trade/discounts`;
 const apiUrl_checkout = `${baseUrl}/api/${version}/user/checkout`;
 const apiUrl_newebpay = `${baseUrl}/api/${version}/user/newebpay`;
+const apiUrl_orders = `${baseUrl}/api/${version}/user/orders`;
 
 // 401 統一處理：凡是「有帶 Authorization」的請求回 401，一律登出、標記 sessionExpired、
 // 顯示「登入已過期」。排除 /login/status、/login/email、/login/google：
@@ -38,7 +39,8 @@ function isMemberApi(config) {
     url.startsWith(apiUrl_cart) ||
     url.startsWith(apiUrl_discounts) ||
     url.startsWith(apiUrl_checkout) ||
-    url.startsWith(apiUrl_newebpay)
+    url.startsWith(apiUrl_newebpay) ||
+    url.startsWith(apiUrl_orders)
   );
 }
 
@@ -309,6 +311,22 @@ export async function get_points_coupons() {
     points: Number(row.travel_point) || 0,
     coupons: (row.coupon ?? []).filter((c) => c && c.coupon_id),
   };
+}
+
+// [GET] 我的訂單列表：{ data, total }。呼叫端明確傳 limit（後端預設 4）
+export async function get_orders({ page = 1, limit = 10 } = {}) {
+  const res = await tradeRequest(() =>
+    axios.get(apiUrl_orders, { headers: authHeaders(), params: { page, limit } })
+  );
+  return res.data.data ?? { data: [], total: 0 };
+}
+
+// [GET] 我的訂單明細
+export async function get_order(orderId) {
+  const res = await tradeRequest(() =>
+    axios.get(`${apiUrl_orders}/${encodeURIComponent(orderId)}`, { headers: authHeaders() })
+  );
+  return res.data.data;
 }
 
 // [POST] 建立付款：回傳要送往藍新的自動送出 HTML 字串

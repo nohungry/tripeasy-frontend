@@ -64,10 +64,11 @@
               <span>{{ userStore.levelName }}</span>
             </div>
             <ul>
-              <li><router-link to="/admin/userprofile">會員資訊</router-link></li>
-              <li><router-link to="#">會員等級</router-link></li>
-              <li><router-link to="#">個人偏好設定</router-link></li>
-              <li><router-link to="#">個人訂單查看</router-link></li>
+              <li><router-link to="/admin/userprofile?tab=info">會員資訊</router-link></li>
+              <li><router-link to="/admin/userprofile?tab=level">會員等級</router-link></li>
+              <li><router-link to="/admin/userprofile?tab=preference">個人偏好設定</router-link></li>
+              <li><router-link to="/admin/userprofile?tab=orders">個人訂單查看</router-link></li>
+              <li><router-link to="/admin/collect">收藏</router-link></li>
               <li><a href="#" @click.prevent="logout">登出</a></li>
             </ul>
           </div>
@@ -116,7 +117,14 @@
         <li><router-link to="/search">購物專區</router-link></li>
         <li><router-link to="#">旅遊神器</router-link></li>
         <li><router-link to="#">行事曆</router-link></li>
-        <li><router-link to="#">購物車</router-link></li>
+        <li><router-link to="/cart">購物車</router-link></li>
+        <template v-if="userStore.isLoggedIn">
+          <li><router-link to="/admin/userprofile?tab=info">會員資訊</router-link></li>
+          <li><router-link to="/admin/userprofile?tab=level">會員等級</router-link></li>
+          <li><router-link to="/admin/userprofile?tab=preference">個人偏好設定</router-link></li>
+          <li><router-link to="/admin/userprofile?tab=orders">個人訂單查看</router-link></li>
+          <li><router-link to="/admin/collect">收藏</router-link></li>
+        </template>
       </ul>
 
       <router-link v-if="!userStore.isLoggedIn" to="/admin/login" class="login_btn"

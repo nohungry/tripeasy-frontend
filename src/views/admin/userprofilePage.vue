@@ -31,7 +31,7 @@
                 :class="{ active: currentTab === tab }"
                 v-for="tab in tabs"
                 :key="tab"
-                @click="currentTab = tab"
+                @click="selectTab(tab)"
               >
                 <i :class="icons[tab] + ' me-2'"></i>{{ tab }}
               </div>
@@ -43,7 +43,81 @@
             <div class="title"><i class="bi bi-person-circle me-2"></i>會員中心</div>
 
             <!-- 尚未開放的分頁 -->
-            <div v-if="currentTab !== '會員資訊'" class="coming-soon">即將開放</div>
+            <div v-if="currentTab === '會員等級' || currentTab === '個人偏好設定'" class="coming-soon">
+              即將開放
+            </div>
+
+            <!-- 個人訂單查看 -->
+            <section v-if="currentTab === '個人訂單查看'" class="orders-panel">
+              <div v-if="ordersLoaded && orders.length === 0" class="orders-empty">目前沒有訂單</div>
+              <div v-for="order in orders" :key="order.order_id" class="order-row" data-testid="order-row">
+                <div class="order-summary">
+                  <div class="order-main">
+                    <span class="order-no">{{ order.order_id.slice(0, 8) }}</span>
+                    <span class="order-time">{{ formatTime(order.created_at) }}</span>
+                  </div>
+                  <div class="order-title">
+                    {{ order.first_item ? order.first_item.title : '（行程已移除）' }}
+                    <span class="order-count">{{ order.item_count }} 項</span>
+                  </div>
+                  <div class="order-side">
+                    <span class="order-status">{{ orderStatusText(order) }}</span>
+                    <span class="order-payable">NT${{ formatMoney(order.payable) }}</span>
+                  </div>
+                </div>
+                <div v-if="order.deadline && (order.can_continue_payment || order.is_overdue)" class="order-deadline">
+                  付款期限 {{ formatTime(order.deadline) }}
+                </div>
+                <div class="order-actions">
+                  <button type="button" class="btn btn-outline-secondary btn-sm" @click="toggleDetail(order)">
+                    明細
+                  </button>
+                  <button
+                    v-if="order.can_continue_payment"
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    @click="continuePayment(order)"
+                  >
+                    繼續付款
+                  </button>
+                </div>
+                <div v-if="openDetailId === order.order_id" class="order-detail" data-testid="order-detail">
+                  <template v-if="detail">
+                    <div class="detail-title">品項</div>
+                    <ul>
+                      <li v-for="item in detail.items" :key="item.order_item_id">
+                        {{ item.title }} × {{ item.quantity }}　NT${{ formatMoney(item.total_price) }}
+                      </li>
+                    </ul>
+                    <div class="detail-title">收件資料</div>
+                    <div>地址：{{ detail.shipping.address || '—' }}</div>
+                    <div>電話：{{ detail.shipping.phone || '—' }}</div>
+                    <div class="detail-title">折扣</div>
+                    <div v-if="detail.money.discount_type">
+                      {{ detail.money.discount_type }}　-NT${{ formatMoney(detail.money.discount_amount) }}
+                    </div>
+                    <div v-else>無</div>
+                    <div class="detail-title">付款紀錄</div>
+                    <div v-if="detail.payments.length === 0">尚無付款紀錄</div>
+                    <ul v-else>
+                      <li v-for="(p, idx) in detail.payments" :key="idx">
+                        {{ formatTime(p.created_at) }}　{{ p.result }}
+                      </li>
+                    </ul>
+                  </template>
+                  <div v-else>載入中…</div>
+                </div>
+              </div>
+              <div v-if="ordersTotalPages > 1" class="orders-pager">
+                <button type="button" class="btn btn-outline-secondary btn-sm" :disabled="ordersPage <= 1" @click="changeOrdersPage(ordersPage - 1)">
+                  上一頁
+                </button>
+                <span>{{ ordersPage }} / {{ ordersTotalPages }}</span>
+                <button type="button" class="btn btn-outline-secondary btn-sm" :disabled="ordersPage >= ordersTotalPages" @click="changeOrdersPage(ordersPage + 1)">
+                  下一頁
+                </button>
+              </div>
+            </section>
 
             <!-- 會員資訊表單 -->
             <form v-if="currentTab === '會員資訊'" id="userinfo" @submit.prevent>
@@ -177,6 +251,10 @@ import * as func from '@/utils/function.js';
 import * as api from '@/utils/api.js';
 import Swal from 'sweetalert2';
 
+// ?tab= 對應的分頁；未知或缺少 → info
+const TAB_KEYS = { info: '會員資訊', level: '會員等級', preference: '個人偏好設定', orders: '個人訂單查看' };
+const ORDERS_PER_PAGE = 10;
+
 export default {
   name: 'userprofilePage',
   components: { HeaderComponent, FooterComponent },
@@ -187,8 +265,14 @@ export default {
         new: false,
         confirm: false,
       },
-      currentTab: '會員資訊',
-      tabs: ['會員資訊', '會員等級', '個人偏好設定', '個人訂單查看'],
+      TAB_KEYS,
+      tabs: Object.values(TAB_KEYS),
+      orders: [],
+      ordersTotal: 0,
+      ordersPage: 1,
+      ordersLoaded: false,
+      openDetailId: null,
+      detail: null,
       icons: {
         會員資訊: 'bi bi-person-vcard',
         會員等級: 'bi bi-trophy',
@@ -233,10 +317,76 @@ export default {
       },
     };
   },
+  computed: {
+    currentTab() {
+      return TAB_KEYS[this.$route.query.tab] ?? TAB_KEYS.info;
+    },
+    ordersTotalPages() {
+      return Math.max(1, Math.ceil(this.ordersTotal / ORDERS_PER_PAGE));
+    },
+  },
+  watch: {
+    currentTab(tab) {
+      if (tab === TAB_KEYS.orders) this.fetchOrders(1);
+    },
+  },
   mounted() {
     this.fetchUserInfo();
+    if (this.currentTab === TAB_KEYS.orders) this.fetchOrders(1);
   },
   methods: {
+    selectTab(label) {
+      const tab = Object.keys(TAB_KEYS).find((key) => TAB_KEYS[key] === label);
+      if (tab && TAB_KEYS[this.$route.query.tab] !== label) {
+        this.$router.replace({ query: { tab } });
+      }
+    },
+    async fetchOrders(page) {
+      const seq = (this.ordersSeq = (this.ordersSeq || 0) + 1);
+      this.openDetailId = null;
+      this.detail = null;
+      try {
+        const res = await api.get_orders({ page, limit: ORDERS_PER_PAGE });
+        if (seq !== this.ordersSeq) return;
+        this.orders = res.data;
+        this.ordersTotal = res.total;
+        this.ordersPage = page;
+        this.ordersLoaded = true;
+      } catch (error) {
+        // 錯誤提示已在 api 內顯示
+      }
+    },
+    changeOrdersPage(page) {
+      this.fetchOrders(page);
+    },
+    async toggleDetail(order) {
+      if (this.openDetailId === order.order_id) {
+        this.openDetailId = null;
+        this.detail = null;
+        return;
+      }
+      this.openDetailId = order.order_id;
+      this.detail = null;
+      try {
+        const detail = await api.get_order(order.order_id);
+        if (this.openDetailId === order.order_id) this.detail = detail;
+      } catch (error) {
+        // 錯誤提示已在 api 內顯示
+      }
+    },
+    continuePayment(order) {
+      this.$router.push({ name: 'pay', query: { order: order.order_id } });
+    },
+    // 前端不比對時間（F1）：只讀後端的 is_overdue
+    orderStatusText(order) {
+      return order.is_overdue ? '已逾時' : order.status_label;
+    },
+    formatTime(value) {
+      return value ? new Date(value).toLocaleString('zh-TW', { hour12: false }) : '';
+    },
+    formatMoney(value) {
+      return Number(value).toLocaleString('en-US');
+    },
     togglePassword(key) {
       this.passwordVisible[key] = !this.passwordVisible[key];
     },
@@ -293,7 +443,6 @@ export default {
     },
 
     async updateUserPassword() {
-      console.log(this.password.current);
 
       await api.post_user_resetProfilePW(
         this.password.current,
@@ -484,6 +633,62 @@ select option:disabled {
   box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
 }
 
+/* 訂單分頁 */
+.orders-empty {
+  padding: 40px 0;
+  text-align: center;
+  color: #888;
+}
+.order-row {
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+.order-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.order-no {
+  font-weight: bold;
+  margin-right: 8px;
+}
+.order-time,
+.order-count,
+.order-deadline {
+  color: #888;
+  font-size: 0.9em;
+}
+.order-count {
+  margin-left: 8px;
+}
+.order-side {
+  display: flex;
+  gap: 12px;
+}
+.order-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+}
+.order-detail {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #eee;
+}
+.detail-title {
+  font-weight: bold;
+  margin-top: 8px;
+}
+.orders-pager {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+}
 /* 編輯圖標 */
 .edit-icon {
   position: absolute;
