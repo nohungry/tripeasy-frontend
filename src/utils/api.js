@@ -19,6 +19,7 @@ const apiUrl_newebpay = `${baseUrl}/api/${version}/user/newebpay`;
 const apiUrl_orders = `${baseUrl}/api/${version}/user/orders`;
 const apiUrl_points = `${baseUrl}/api/${version}/user/points`;
 const apiUrl_automation = `${baseUrl}/api/${version}/user/automation`;
+const apiUrl_collection = `${baseUrl}/api/${version}/user/collection`;
 
 // 401 統一處理：凡是「有帶 Authorization」的請求回 401，一律登出、標記 sessionExpired、
 // 顯示「登入已過期」。排除 /login/status、/login/email、/login/google：
@@ -44,7 +45,8 @@ function isMemberApi(config) {
     url.startsWith(apiUrl_newebpay) ||
     url.startsWith(apiUrl_orders) ||
     url.startsWith(apiUrl_points) ||
-    url.startsWith(apiUrl_automation)
+    url.startsWith(apiUrl_automation) ||
+    url.startsWith(apiUrl_collection)
   );
 }
 
@@ -772,4 +774,30 @@ export function post_user_resetProfilePW(Pwd_txt, NewPwd_txt, NewaginPwd_txt, on
         onComplete(); // ✅ 無論成功或失敗都清空
       }
     });
+}
+
+// ---------- P5 收藏 ----------
+
+// [GET] 收藏列表：不分頁（伺服器端上限 100 筆、新到舊）；無資料時回應沒有 data 鍵
+export async function get_favorites() {
+  const res = await tradeRequest(() =>
+    axios.get(`${apiUrl_collection}/info/all`, { headers: authHeaders(), params: { lang: 'zh-TW' } })
+  );
+  const body = res.data.data;
+  return { data: body?.data ?? [], total: body?.total ?? 0 };
+}
+
+// [POST] 收藏行程：第一次 201、重複 200，都回 favorite_id
+export async function post_favorite(tourId) {
+  const res = await tradeRequest(() =>
+    axios.post(`${apiUrl_collection}/info/${encodeURIComponent(tourId)}`, null, { headers: authHeaders() })
+  );
+  return { favorite_id: res.data.data.favorite_id };
+}
+
+// [DELETE] 取消收藏
+export async function delete_favorite(favoriteId) {
+  await tradeRequest(() =>
+    axios.delete(`${apiUrl_collection}/info/${encodeURIComponent(favoriteId)}`, { headers: authHeaders() })
+  );
 }

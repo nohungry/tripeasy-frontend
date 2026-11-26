@@ -30,6 +30,12 @@
               <del class="ms-2 text-muted">{{ formatPrice(tour.price) }}</del>
             </template>
             <span v-else class="fs-3 fw-bold">{{ formatPrice(tour.price) }}</span>
+            <FavoriteHeart
+              class="ms-3 align-middle"
+              :tour-id="tour.tour_id || $route.params.tour_id"
+              :favorite-id="tour.favorite_id ?? null"
+              @update:favorite-id="(id) => (tour.favorite_id = id)"
+            />
           </p>
           <p class="mb-2">
             出發日期：{{ dateText(tour.date_start) }}
@@ -265,6 +271,7 @@
 <script>
 import Swal from 'sweetalert2';
 import { userStore } from '@/stores/userStore.js';
+import FavoriteHeart from '@/components/FavoriteHeart.vue';
 import {
   get_tour_detail,
   get_tour_reviews,
@@ -279,6 +286,7 @@ const PAGE_SIZE = 5;
 
 export default {
   name: 'tourPage',
+  components: { FavoriteHeart },
   data() {
     return {
       tour: null,

@@ -156,9 +156,12 @@
                           </p>
                         </div>
 
-                        <span class="favorite"
-                          ><img src="@/assets/img/icon/favorite-line.svg" alt=""
-                        /></span>
+                        <FavoriteHeart
+                          class="favorite"
+                          :tour-id="item['旅遊編號']"
+                          :favorite-id="item['收藏編號'] ?? null"
+                          @update:favorite-id="(id) => (item['收藏編號'] = id)"
+                        />
                       </div>
                     </div>
                   </li>
@@ -335,6 +338,7 @@
 import { onMounted } from 'vue'
 
 import { get_home_products } from '@/utils/api.js';
+import FavoriteHeart from '@/components/FavoriteHeart.vue';
 
 import taiwan_01 from '@/assets/img/home_page/viewpoint-img.svg';
 import taiwan_02 from '@/assets/img/home_page/viewpoint-img-7.svg';
@@ -369,6 +373,7 @@ const PRODUCT_LIMIT = 4;
 
 export default {
   name: 'HomePage',
+  components: { FavoriteHeart },
   data() {
     return {
       isSticky: false,
@@ -1198,7 +1203,8 @@ h2::after {
   cursor: pointer;
 }
 
-.content_left .product_item .i_container:hover .favorite {
+.content_left .product_item .i_container:hover .favorite,
+.content_left .product_item .favorite[aria-pressed='true'] {
   opacity: 1;
 }
 

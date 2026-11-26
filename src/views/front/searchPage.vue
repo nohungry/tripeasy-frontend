@@ -196,6 +196,12 @@
                 <div class="flex-grow-1">
                   <div class="d-flex align-items-center mb-1">
                     <h5 class="mb-0">{{ item['旅遊名稱'] }}</h5>
+                    <FavoriteHeart
+                      class="ms-2"
+                      :tour-id="item['旅遊編號']"
+                      :favorite-id="item['收藏編號'] ?? null"
+                      @update:favorite-id="(id) => (item['收藏編號'] = id)"
+                    />
                   </div>
                   <p class="mb-2 small text-start">{{ item['旅遊描述'] }}</p>
                 </div>
@@ -245,6 +251,7 @@
 <script setup>
 import FooterComponent from '@/components/FooterComponent.vue';
 import HeaderComponent from '@/components/HeaderComponent.vue';
+import FavoriteHeart from '@/components/FavoriteHeart.vue';
 import { reactive, computed, ref, onMounted, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { get_tour_list } from '@/utils/api.js';
