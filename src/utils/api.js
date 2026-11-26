@@ -17,6 +17,7 @@ const apiUrl_discounts = `${baseUrl}/api/${version}/user/trade/discounts`;
 const apiUrl_checkout = `${baseUrl}/api/${version}/user/checkout`;
 const apiUrl_newebpay = `${baseUrl}/api/${version}/user/newebpay`;
 const apiUrl_orders = `${baseUrl}/api/${version}/user/orders`;
+const apiUrl_points = `${baseUrl}/api/${version}/user/points`;
 
 // 401 統一處理：凡是「有帶 Authorization」的請求回 401，一律登出、標記 sessionExpired、
 // 顯示「登入已過期」。排除 /login/status、/login/email、/login/google：
@@ -40,7 +41,8 @@ function isMemberApi(config) {
     url.startsWith(apiUrl_discounts) ||
     url.startsWith(apiUrl_checkout) ||
     url.startsWith(apiUrl_newebpay) ||
-    url.startsWith(apiUrl_orders)
+    url.startsWith(apiUrl_orders) ||
+    url.startsWith(apiUrl_points)
   );
 }
 
@@ -311,6 +313,29 @@ export async function get_points_coupons() {
     points: Number(row.travel_point) || 0,
     coupons: (row.coupon ?? []).filter((c) => c && c.coupon_id),
   };
+}
+
+// [GET] 會員等級、點數餘額與可用優惠券（後端已把負點數改回 0、無券回空陣列）
+export async function get_member_level() {
+  const res = await tradeRequest(() =>
+    axios.get(`${apiUrl_userprofile}/pointslevel`, { headers: authHeaders() })
+  );
+  const row = res.data.data?.[0] ?? {};
+  return {
+    level: row.level ?? null,
+    level_name: row.level_name ?? '',
+    badge_url: row.badge_url ?? '',
+    travel_point: Number(row.travel_point) || 0,
+    coupons: row.coupon ?? [],
+  };
+}
+
+// [GET] 我的點數紀錄：{ data, total }。呼叫端明確傳 limit（後端預設 4）
+export async function get_point_records({ page = 1, limit = 10 } = {}) {
+  const res = await tradeRequest(() =>
+    axios.get(`${apiUrl_points}/records`, { headers: authHeaders(), params: { page, limit } })
+  );
+  return res.data.data ?? { data: [], total: 0 };
 }
 
 // [GET] 我的訂單列表：{ data, total }。呼叫端明確傳 limit（後端預設 4）

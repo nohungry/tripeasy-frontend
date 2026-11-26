@@ -43,9 +43,49 @@
             <div class="title"><i class="bi bi-person-circle me-2"></i>會員中心</div>
 
             <!-- 尚未開放的分頁 -->
-            <div v-if="currentTab === '會員等級' || currentTab === '個人偏好設定'" class="coming-soon">
-              即將開放
-            </div>
+            <div v-if="currentTab === '個人偏好設定'" class="coming-soon">即將開放</div>
+
+            <!-- 會員等級 -->
+            <section v-if="currentTab === '會員等級'" class="level-panel">
+              <div class="level-card">
+                <img v-if="level.badge_url" :src="level.badge_url" alt="等級徽章" class="level-badge" />
+                <div>
+                  <div class="level-name">目前等級 {{ level.level_name }}</div>
+                  <div>購物回饋比例 {{ REWARD_RATE_TEXT }}</div>
+                  <div>點數餘額 {{ level.travel_point }} 點</div>
+                  <div class="level-note">升級規則尚未開放</div>
+                </div>
+              </div>
+
+              <div class="level-subtitle">優惠券</div>
+              <div v-if="levelLoaded && level.coupons.length === 0" class="orders-empty">目前沒有可用的優惠券</div>
+              <ul v-else class="coupon-list">
+                <li v-for="coupon in level.coupons" :key="coupon.coupon_id">
+                  <span class="coupon-code">{{ coupon.code }}</span>
+                  <span>{{ coupon.description }}</span>
+                  <span class="order-time">期限 {{ formatTime(coupon.expire_date) }}</span>
+                </li>
+              </ul>
+
+              <div class="level-subtitle">點數紀錄</div>
+              <div class="level-note">點數紀錄為明細，加總不一定等於目前餘額（初始點數沒有對應紀錄）</div>
+              <div v-if="pointsLoaded && pointRecords.length === 0" class="orders-empty">目前沒有點數紀錄</div>
+              <div v-for="(record, index) in pointRecords" :key="index" class="point-row" data-testid="point-record">
+                <span class="order-time">{{ formatTime(record.created_at) }}</span>
+                <span>{{ record.reason }}</span>
+                <span class="point-amount">{{ formatSigned(record.point) }}</span>
+                <span class="order-no">{{ record.order_id ? record.order_id.slice(0, 8) : '' }}</span>
+              </div>
+              <div v-if="pointsTotalPages > 1" class="orders-pager">
+                <button type="button" class="btn btn-outline-secondary btn-sm" :disabled="pointsPage <= 1" @click="fetchPointRecords(pointsPage - 1)">
+                  上一頁
+                </button>
+                <span>{{ pointsPage }} / {{ pointsTotalPages }}</span>
+                <button type="button" class="btn btn-outline-secondary btn-sm" :disabled="pointsPage >= pointsTotalPages" @click="fetchPointRecords(pointsPage + 1)">
+                  下一頁
+                </button>
+              </div>
+            </section>
 
             <!-- 個人訂單查看 -->
             <section v-if="currentTab === '個人訂單查看'" class="orders-panel">
@@ -259,6 +299,9 @@ function tabLabel(tab) {
 }
 const DISCOUNT_LABELS = { coupon: '優惠券', point: '點數折抵' };
 const ORDERS_PER_PAGE = 10;
+const POINTS_PER_PAGE = 10;
+// 回饋比例 API 沒有輸出（F10）；與後端 settlePaidOrder 的 floor(payable × 0.1) 一致
+const REWARD_RATE_TEXT = '10%';
 
 export default {
   name: 'userprofilePage',
@@ -272,11 +315,18 @@ export default {
       },
       TAB_KEYS,
       DISCOUNT_LABELS,
+      REWARD_RATE_TEXT,
       tabs: Object.values(TAB_KEYS),
       orders: [],
       ordersTotal: 0,
       ordersPage: 1,
       ordersLoaded: false,
+      level: { level_name: '', badge_url: '', travel_point: 0, coupons: [] },
+      levelLoaded: false,
+      pointRecords: [],
+      pointsTotal: 0,
+      pointsPage: 1,
+      pointsLoaded: false,
       openDetailId: null,
       detail: null,
       icons: {
@@ -327,6 +377,9 @@ export default {
     currentTab() {
       return tabLabel(this.$route.query.tab);
     },
+    pointsTotalPages() {
+      return Math.max(1, Math.ceil(this.pointsTotal / POINTS_PER_PAGE));
+    },
     ordersTotalPages() {
       return Math.max(1, Math.ceil(this.ordersTotal / ORDERS_PER_PAGE));
     },
@@ -334,11 +387,13 @@ export default {
   watch: {
     currentTab(tab) {
       if (tab === TAB_KEYS.orders) this.fetchOrders(1);
+      if (tab === TAB_KEYS.level) this.fetchLevel();
     },
   },
   mounted() {
     this.fetchUserInfo();
     if (this.currentTab === TAB_KEYS.orders) this.fetchOrders(1);
+    if (this.currentTab === TAB_KEYS.level) this.fetchLevel();
   },
   methods: {
     selectTab(label) {
@@ -346,6 +401,38 @@ export default {
       if (tab && tabLabel(this.$route.query.tab) !== label) {
         this.$router.replace({ query: { tab } });
       }
+    },
+    fetchLevel() {
+      this.fetchMemberLevel();
+      this.fetchPointRecords(1);
+    },
+    async fetchMemberLevel() {
+      const seq = (this.levelSeq = (this.levelSeq || 0) + 1);
+      try {
+        const level = await api.get_member_level();
+        if (seq !== this.levelSeq) return;
+        this.level = level;
+        this.levelLoaded = true;
+      } catch (error) {
+        // 錯誤提示已在 api 內顯示
+      }
+    },
+    async fetchPointRecords(page) {
+      const seq = (this.pointsSeq = (this.pointsSeq || 0) + 1);
+      try {
+        const res = await api.get_point_records({ page, limit: POINTS_PER_PAGE });
+        if (seq !== this.pointsSeq) return;
+        this.pointRecords = res.data;
+        this.pointsTotal = res.total;
+        this.pointsPage = page;
+        this.pointsLoaded = true;
+      } catch (error) {
+        // 錯誤提示已在 api 內顯示
+      }
+    },
+    formatSigned(value) {
+      const n = Number(value);
+      return n > 0 ? `+${n}` : String(n);
     },
     async fetchOrders(page) {
       const seq = (this.ordersSeq = (this.ordersSeq || 0) + 1);
@@ -689,6 +776,49 @@ select option:disabled {
 .detail-title {
   font-weight: bold;
   margin-top: 8px;
+}
+.level-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.level-badge {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+.level-name {
+  font-weight: 600;
+}
+.level-subtitle {
+  font-weight: 600;
+  margin: 16px 0 8px;
+}
+.level-note {
+  color: #888;
+  font-size: 0.9rem;
+}
+.coupon-list {
+  list-style: none;
+  padding: 0;
+}
+.coupon-list li,
+.point-row {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  background: #fff;
+  border-radius: 8px;
+  padding: 10px 16px;
+  margin-bottom: 8px;
+}
+.coupon-code,
+.point-amount {
+  font-weight: 600;
 }
 .orders-pager {
   display: flex;
